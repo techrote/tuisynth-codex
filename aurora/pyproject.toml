@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools==84.0.0", "wheel==0.48.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trio-aurora"
+version = "0.1.0"
+description = "An evolving spectral pad synthesizer for the terminal"
+requires-python = ">=3.11"
+dependencies = ["trio-kit>=0.1.0,<0.2.0"]
+
+[project.scripts]
+aurora = "trio_aurora.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+trio_aurora = ["py.typed", "data/presets/*.json", "data/skins/*.txt"]

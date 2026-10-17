@@ -1,0 +1,166 @@
+"""Run package tests and optional clean wheel installation checks."""
+
+from __future__ import annotations
+
+import argparse
+import os
+import subprocess
+import sys
+import tempfile
+import venv
+from pathlib import Path
+from typing import Sequence
+
+
+ROOT = Path(__file__).resolve().parents[1]
+PACKAGES = ("kit", "aurora", "loom", "drift")
+IMPORTS = {
+    "kit": ("trio-kit", "trio_kit", None),
+    "aurora": ("trio-aurora", "trio_aurora", "aurora"),
+    "loom": ("trio-loom", "trio_loom", "loom"),
+    "drift": ("trio-drift", "trio_drift", "drift"),
+}
+
+
+class CheckFailed(RuntimeError):
+    """Raised when a qualification subprocess fails."""
+
+
+def selected_packages(selection: str) -> tuple[str, ...]:
+    if selection == "all":
+        return PACKAGES
+    return (selection,)
+
+
+def wheel_packages(packages: Sequence[str]) -> tuple[str, ...]:
+    """Include the shared kit when packaging an instrument on its own."""
+    selected = set(packages)
+    if selected & {"aurora", "loom", "drift"}:
+        selected.add("kit")
+    return tuple(package for package in PACKAGES if package in selected)
+
+
+def run_process(
+    command: Sequence[str],
+    *,
+    label: str,
+    cwd: Path = ROOT,
+    env: dict[str, str] | None = None,
+    capture: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    printable = " ".join(command)
+    print(f"\n==> {label}: {printable}", flush=True)
+    result = subprocess.run(
+        command,
+        cwd=cwd,
+        env=env,
+        text=True,
+        capture_output=capture,
+        check=False,
+    )
+    if capture and result.stdout:
+        print(result.stdout, end="")
+    if capture and result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    if result.returncode:
+        raise CheckFailed(f"{label} failed with exit code {result.returncode}")
+    return result
+
+
+def run_tests(packages: Sequence[str], *, update_snapshots: bool) -> None:
+    environment = os.environ.copy()
+    if update_snapshots:
+        environment["TRIO_UPDATE_SNAPSHOTS"] = "1"
+    for package in packages:
+        run_process(
+            [sys.executable, "-m", "pytest", "-q", str(ROOT / package / "tests")],
+            label=f"{package} tests",
+            env=environment,
+        )
+
+
+def venv_python(environment: Path) -> Path:
+    if os.name == "nt":
+        return environment / "Scripts" / "python.exe"
+    return environment / "bin" / "python"
+
+
+def venv_script(environment: Path, command: str) -> Path:
+    if os.name == "nt":
+        return environment / "Scripts" / f"{command}.exe"
+    return environment / "bin" / command
+
+
+def check_wheels(packages: Sequence[str]) -> None:
+    packages = wheel_packages(packages)
+    with tempfile.TemporaryDirectory(prefix="trio-wheel-check-") as temporary:
+        workspace = Path(temporary)
+        wheels = workspace / "wheels"
+        wheels.mkdir()
+
+        for package in packages:
+            run_process(
+                [sys.executable, "-m", "build", "--wheel", "--outdir", str(wheels), str(ROOT / package)],
+                label=f"build {package} wheel",
+            )
+
+        environment = workspace / "install"
+        venv.EnvBuilder(with_pip=True).create(environment)
+        python = venv_python(environment)
+        wheel_paths = sorted(wheels.glob("*.whl"))
+        if len(wheel_paths) != len(packages):
+            raise CheckFailed(f"expected {len(packages)} wheels, found {len(wheel_paths)}")
+
+        run_process(
+            [str(python), "-m", "pip", "install", *map(str, wheel_paths)],
+            label="install wheels in a clean environment",
+            cwd=workspace,
+        )
+
+        for package in packages:
+            distribution, import_name, command = IMPORTS[package]
+            check_script = (
+                "import importlib, importlib.metadata; "
+                f"assert importlib.metadata.version({distribution!r}) == '0.1.0'; "
+                f"assert importlib.import_module({import_name!r}).__version__ == '0.1.0'"
+            )
+            run_process(
+                [str(python), "-c", check_script],
+                label=f"installed {distribution} metadata and import smoke check",
+                cwd=workspace,
+            )
+            if command is not None:
+                result = run_process(
+                    [str(venv_script(environment, command)), "--version"],
+                    label=f"installed {command} --version",
+                    cwd=workspace,
+                    capture=True,
+                )
+                expected = f"{command} 0.1.0"
+                if result.stdout.strip() != expected:
+                    raise CheckFailed(f"{command} --version returned {result.stdout.strip()!r}; expected {expected!r}")
+
+
+def make_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--package", choices=(*PACKAGES, "all"), default="all")
+    parser.add_argument("--packaging", action="store_true", help="build selected wheels and install them in a clean environment")
+    parser.add_argument("--update-snapshots", action="store_true", help="set TRIO_UPDATE_SNAPSHOTS=1 for selected tests")
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    arguments = make_parser().parse_args(argv)
+    packages = selected_packages(arguments.package)
+    try:
+        run_tests(packages, update_snapshots=arguments.update_snapshots)
+        if arguments.packaging:
+            check_wheels(packages)
+    except CheckFailed as error:
+        print(f"\nERROR: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
