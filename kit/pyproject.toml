@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools==84.0.0", "wheel==0.48.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trio-kit"
+version = "0.1.0"
+description = "Shared audio engine and terminal interface for the TRIO synthesizers"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.4.3,<3",
+    "scipy>=1.17.1,<2",
+    "prompt-toolkit>=3.0.53,<4",
+    "wcwidth>=0.9.2,<1",
+]
+
+[project.optional-dependencies]
+audio = ["sounddevice>=0.5,<1"]
+midi = ["mido>=1.3,<2", "python-rtmidi>=1.5,<2"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+trio_kit = ["py.typed", "data/presets/*.json", "data/skins/*.txt"]
