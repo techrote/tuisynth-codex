@@ -1,6 +1,34 @@
 """Shared foundation for the AURORA, LOOM, and DRIFT synthesizers."""
 
-from trio_kit.params import ParamError, ParamRegistry, ParamSpec, ParamWarning
+from trio_kit.constants import BLOCK, DEFAULT_SAMPLE_RATE, MAX_EVENT_QUEUE, OUTPUT_CEILING
+from trio_kit.events import (
+    ControlChange,
+    Event,
+    EventQueue,
+    InstrumentEvent,
+    ModWheel,
+    NoteIds,
+    NoteOff,
+    NoteOn,
+    Panic,
+    ParamSet,
+    PitchBend,
+    Sustain,
+    Transport,
+)
+from trio_kit.engine import (
+    Engine,
+    EngineTelemetry,
+    Instrument,
+    MasterBus,
+    NullBackend,
+    OfflineEngine,
+    SoundDeviceBackend,
+    Voice,
+    VoiceManager,
+    open_backend,
+)
+from trio_kit.params import ParamError, ParamRegistry, ParamSnapshot, ParamSpec, ParamState, ParamWarning
 from trio_kit.preset import (
     Preset,
     PresetError,
@@ -16,17 +44,46 @@ from trio_kit.userdata import get_user_data_dir
 __version__ = "0.1.0"
 
 __all__ = [
+    "BLOCK",
+    "ControlChange",
+    "DEFAULT_SAMPLE_RATE",
+    "Engine",
+    "EngineTelemetry",
+    "Event",
+    "EventQueue",
+    "Instrument",
+    "InstrumentEvent",
+    "MAX_EVENT_QUEUE",
+    "MasterBus",
+    "ModWheel",
+    "NoteIds",
+    "NoteOff",
+    "NoteOn",
+    "NullBackend",
+    "OUTPUT_CEILING",
+    "OfflineEngine",
+    "Panic",
     "ParamError",
     "ParamRegistry",
+    "ParamSet",
+    "ParamSnapshot",
     "ParamSpec",
+    "ParamState",
     "ParamWarning",
+    "PitchBend",
     "Preset",
     "PresetError",
     "PresetLibrary",
     "PresetWarning",
+    "SoundDeviceBackend",
+    "Sustain",
+    "Transport",
+    "Voice",
+    "VoiceManager",
     "get_user_data_dir",
     "load_preset",
     "parse_preset",
     "save_preset",
     "serialize_preset",
+    "open_backend",
 ]

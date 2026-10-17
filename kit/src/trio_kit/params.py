@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+import threading
 import warnings
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -290,3 +291,70 @@ def _format_number(value: float) -> str:
         return "0"
     rounded = f"{value:.3f}".rstrip("0").rstrip(".")
     return "0" if rounded == "-0" else rounded
+
+
+@dataclass(frozen=True, slots=True)
+class ParamSnapshot(Mapping[str, ParamValue]):
+    """Immutable, versioned values observed coherently by one audio block."""
+
+    _values: Mapping[str, ParamValue]
+    version: int = 0
+
+    def __post_init__(self) -> None:
+        if isinstance(self.version, bool) or not isinstance(self.version, int) or self.version < 0:
+            raise ParamError("", "snapshot version must be a non-negative integer")
+        if not isinstance(self._values, Mapping):
+            raise ParamError("", "snapshot values must be a mapping")
+        values: dict[str, ParamValue] = {}
+        for key, value in self._values.items():
+            if not isinstance(key, str):
+                raise ParamError("", "snapshot parameter keys must be strings")
+            normalized = _number(value, key)
+            values[key] = int(value) if isinstance(value, int) and not isinstance(value, bool) else normalized
+        object.__setattr__(self, "_values", MappingProxyType(values))
+
+    def __getitem__(self, key: str) -> ParamValue:
+        return self._values[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._values)
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+
+class ParamState:
+    """Thread-safe publisher of complete immutable parameter snapshots."""
+
+    def __init__(self, registry: ParamRegistry, initial: Mapping[str, object] | None = None) -> None:
+        if not isinstance(registry, ParamRegistry):
+            raise ParamError("", "state registry must be a ParamRegistry")
+        self.registry = registry
+        self._lock = threading.Lock()
+        self._snapshot = ParamSnapshot(registry.validate(initial if initial is not None else {}), 0)
+
+    @property
+    def snapshot(self) -> ParamSnapshot:
+        with self._lock:
+            return self._snapshot
+
+    def apply(self, changes: Mapping[str, object]) -> ParamSnapshot:
+        """Validate and publish updates as one all-or-nothing version change."""
+        if not isinstance(changes, Mapping):
+            raise ParamError("", "parameter changes must be a mapping")
+        with self._lock:
+            current = dict(self._snapshot)
+            candidate = dict(current)
+            for key, value in changes.items():
+                candidate[key] = self.registry.validate_value(key, value)
+            complete = self.registry.validate(candidate)
+            if complete == current:
+                return self._snapshot
+            self._snapshot = ParamSnapshot(complete, self._snapshot.version + 1)
+            return self._snapshot
+
+    def set(self, key: str, value: object) -> ParamSnapshot:
+        return self.apply({key: value})
+
+    def reset(self) -> ParamSnapshot:
+        return self.apply(self.registry.defaults())

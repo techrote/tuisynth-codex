@@ -14,7 +14,7 @@ status: authority
 | Internal block | 256 frames (`BLOCK`) |
 | Sample format | float32, stereo, shape `(frames, 2)` |
 | Output ceiling | `|sample| <= 0.966` (-0.3 dBFS) after the master limiter |
-| Event queue | thread-safe, bounded 4,096 events; overflow drops oldest `param` events first, never note-offs |
+| Event queue | thread-safe, bounded 4,096 events; overflow drops oldest `ParamSet` first, then other non-release events; if a full queue contains only release-critical events, it collapses to one `Panic` |
 
 ## Parameters (TRIO-002)
 
@@ -66,7 +66,7 @@ JSON document, UTF-8, schema `trio-preset/1`:
 
 Immutable dataclasses: `NoteOn(note_id, pitch, velocity, source, frame=0)`,
 `NoteOff(note_id, frame=0)`, `Sustain(on)`, `PitchBend(semitones)`, `ModWheel(value)`,
-`ControlChange(cc, value)`, `ParamSet(key, value)`, `InstrumentEvent(name, payload)`,
+`ControlChange(cc, value)`, `ParamSet(key, value)`, `InstrumentEvent(name, payload, frame=0)`,
 `Panic()`, `Transport(...)` (stretch).
 
 - `pitch` is a float MIDI note number (0-127 after transposition); `velocity` is 0..1.
@@ -77,6 +77,12 @@ Immutable dataclasses: `NoteOn(note_id, pitch, velocity, source, frame=0)`,
 - `frame` is an optional offset (0..BLOCK-1) inside the next block for sample-accurate timing
   (used by the sequencer). The engine splits a block at event frames.
 - Events with out-of-range values are rejected at construction with `ValueError`.
+- The bounded queue evicts the oldest `ParamSet` before other non-release events. A critical
+  `NoteOff` or sustain-off can evict another non-release event. If a queue contains only
+  release-critical events and another critical event arrives, it replaces the queue with one
+  `Panic`; losing individual releases is then safe because the replacement releases every
+  active voice. A non-critical event is rejected when only release-critical events occupy the
+  queue. Explicit `Panic` clears pending events and is accepted immediately.
 - `InstrumentEvent(name: str, payload: tuple)` carries instrument-specific, non-scalar
   commands (AURORA harmonic arrays, LOOM string plucks/mutes). The engine delivers it to
   `Instrument.on_event(name, payload)` at the start of the next block (or at its `frame`).
@@ -88,6 +94,8 @@ Immutable dataclasses: `NoteOn(note_id, pitch, velocity, source, frame=0)`,
 
 - Allocation order: a free voice; else steal the quietest **released** voice; else the oldest
   held voice. A stolen voice gets a 5 ms fade, never an instant cut.
+- Fade tails remain scheduled for their full duration. Their bounded capacity is sized for
+  the maximum event burst in the configured queue plus active voices.
 - Two `NoteOn`s with the same pitch create two voices. Each `NoteOff` releases its own voice.
 - Sustain: while on, `NoteOff` marks the voice `sustained`; turning sustain off releases every
   sustained voice. `Panic` releases all voices with a 10 ms fade and clears sustain.
@@ -108,7 +116,8 @@ Immutable dataclasses: `NoteOn(note_id, pitch, velocity, source, frame=0)`,
   `render(257); render(255)` is sample-identical to `render(512)` (property-tested for many
   random chunkings). It never returns uninitialised memory.
 - Per block: drain events (applying `ParamSet`s into a new `ParamSnapshot`), split at event
-  frames, render voices, run the instrument bus, then the `MasterBus`.
+  frames, render voices and run the instrument bus for each segment, assemble the block, then
+  run the `MasterBus` once. This keeps master limiter statistics aligned with internal blocks.
 - `OfflineEngine` is the same engine with no device; used by tests and `--render`.
 - Randomness only through `numpy.random.Generator` instances seeded from `(seed, voice
   counter)`, so equal seeds and equal event streams give bit-identical float32 output on the

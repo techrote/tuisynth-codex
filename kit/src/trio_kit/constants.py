@@ -1,0 +1,15 @@
+"""Shared fixed sizes and safety limits for the audio engine."""
+
+BLOCK = 256
+DEFAULT_SAMPLE_RATE = 48_000
+SUPPORTED_SAMPLE_RATES = (44_100, DEFAULT_SAMPLE_RATE)
+MAX_EVENT_QUEUE = 4_096
+OUTPUT_CEILING = 0.966
+
+__all__ = [
+    "BLOCK",
+    "DEFAULT_SAMPLE_RATE",
+    "MAX_EVENT_QUEUE",
+    "OUTPUT_CEILING",
+    "SUPPORTED_SAMPLE_RATES",
+]
