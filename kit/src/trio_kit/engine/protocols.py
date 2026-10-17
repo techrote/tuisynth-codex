@@ -1,0 +1,43 @@
+"""Structural protocols implemented by the shared engine's instruments."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Protocol, runtime_checkable
+
+import numpy as np
+
+from trio_kit.params import ParamSnapshot
+
+
+@runtime_checkable
+class Voice(Protocol):
+    @property
+    def finished(self) -> bool: ...
+
+    def start(self, pitch: float, velocity: float, params: ParamSnapshot) -> None: ...
+
+    def release(self) -> None: ...
+
+    def render(self, frames: int, params: ParamSnapshot) -> np.ndarray: ...
+
+    def retarget(self, pitch: float) -> None: ...
+
+
+@runtime_checkable
+class Instrument(Protocol):
+    def create_voice(self, rng: np.random.Generator) -> Voice: ...
+
+    def prepare(self, sample_rate: int, block: int) -> None: ...
+
+    def process_bus(self, buffer: np.ndarray, params: ParamSnapshot) -> np.ndarray | None: ...
+
+    def telemetry(self) -> Mapping[str, object]: ...
+
+    def on_event(self, name: str, payload: tuple[float | int | str, ...]) -> None: ...
+
+    def get_extras(self) -> dict[str, object]: ...
+
+    def set_extras(self, extras: Mapping[str, object]) -> None: ...
+
+    def close(self) -> None: ...
