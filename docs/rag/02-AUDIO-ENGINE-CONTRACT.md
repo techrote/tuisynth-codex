@@ -33,6 +33,14 @@ modulatable=False, group="")` where `kind` is `continuous`, `discrete` (integer 
 - **Morph** (optional per instrument): `morph(a, b, t)` interpolates continuous params
   (respecting `curve`); discrete and choice params take `a` when `t < 0.5` and `b` when
   `t >= 0.5`. Tests must cover `t` in {0, 0.25, 0.49, 0.5, 0.75, 1}.
+- The normalized exponential curve is `q = ln(1 + (e - 1) * f)`, where `f` is the
+  linear fraction through the parameter range; its inverse is
+  `f = expm1(q) / expm1(1)`. Log curves interpolate logarithms between their positive
+  endpoints. These definitions make `to_unit`/`from_unit` round trips and morphing stable.
+- Formatted numbers use up to three decimal places with trailing zeros removed. Values in
+  `[0, 1]` with unit `%` are displayed as percentages; Hz values at or above 1 kHz display
+  as kHz, and ms values at or above 1000 ms display as seconds. Choice values display their
+  label; dB, cents, and semitones use `dB`, `cents`, and `st` suffixes respectively.
 
 ## Presets (TRIO-002)
 
@@ -48,7 +56,9 @@ JSON document, UTF-8, schema `trio-preset/1`:
   validation rules above. `extras` is validated by an instrument-supplied validator.
 - Structural errors (not an object, wrong types, oversize > 256 KiB, nesting > 16) return a
   `PresetError` with a message; they never raise `TypeError`/`AttributeError` to the UI.
-- `save_preset()` writes atomically (temp file in the same directory, flush, `os.replace`).
+- `save_preset()` writes through a flushed temp file in the same directory. Overwrites use
+  `os.replace`; create-only saves use an atomic link so a concurrent create cannot silently
+  replace an existing preset.
 - Factory presets load from package data; user presets from the user data directory and
   shadow factory presets with the same id only when the user explicitly saves over one.
 
