@@ -9,7 +9,7 @@ status: authority
 ## Format
 
 TOML, compatible with the subset of `md-editor-theme/1.1` used by the recovered synths
-(see `cpusynth/themes/*.toml` for examples; read them, do not import their code), plus
+(historical examples exist in public `techrote/tuisynth/cpusynth/themes/` as optional background; the local format below is authoritative), plus
 TRIO extension tables. Legacy `md-editor-theme/1.0` files are accepted with the same
 normalisation the recovered synths applied.
 
