@@ -26,5 +26,5 @@
 | C3|D3|E3|F3|G3|A3|B3|C4|D4|E4|F4|G4|A4|B4|                                                       |
 | +-++-++-++-++-++-++-++-++-++-++-++-++-++-+                                                       |
 |                                                                                                  |
-| MAP drag/gust; right=centre; wheel=density; F2 map F3 grain F4 air F5 lib                        |
+| MAP drag/gust; right=centre; wheel=density; F2 map F3 grain Shift+F3 seq F4 air F5 lib           |
 +--------------------------------------------------------------------------------------------------+

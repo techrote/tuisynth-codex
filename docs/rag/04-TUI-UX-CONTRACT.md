@@ -64,6 +64,8 @@ Shared by all instruments, customised by layout:
 |---|---|
 | `F1` | help overlay (all keys + mouse actions for the current screen) |
 | `F2`..`F5` | instrument screens / panels / drawers (instrument-defined) |
+| `Shift+F3` | open and focus the shared step sequencer in the instrument's visual style |
+| `Space` | start/stop the sequencer transport; it is reserved and never triggers a note |
 | `F6` / `Shift+F6` | next / previous skin (live) |
 | `F7` | MIDI picker (ports, channel, CC-learn bindings) |
 | `F8` | preset library (load, save, save-as, rename, delete user preset) |
@@ -140,6 +142,16 @@ updated only with `--update-snapshots`.
   while preserving their instances and parameter values across screen changes.
 - The headless SGR driver supports captured left, middle and right drags plus the AURORA
   painter's `Ctrl+R/E/O` keyboard twins.
+- `SequencerWidget` draws spectral pillars, thread knots or pressure cells by instrument style.
+  Left click toggles a step, captured vertical drag sets velocity, right click cycles probability,
+  arrows select step/lane, Enter toggles, PageUp/PageDown adjust velocity, and Space toggles
+  transport. `[`/`]` changes tempo and `,`/`.` changes swing. While focused, `A` enables arp,
+  `M` cycles mode, `O` changes octave count, `R` changes rate and `L` toggles latch. `Escape`
+  returns to the instrument screen that was open before the sequencer. In prompt_toolkit, the
+  legacy F15 terminal code is also normalized to `Shift+F3`, because the xterm `CSI 1;2R` spelling
+  conflicts with cursor-position responses.
+- `--snapshot --screen sequencer` renders the editor as a frozen frame; all three instruments
+  have separate golden snapshots and real-SGR interaction coverage.
 
 ### Instrument event routing and contextual help
 

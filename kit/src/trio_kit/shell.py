@@ -16,6 +16,7 @@ from trio_kit.events import ControlChange, Event, NoteOff, NoteOn, Panic, ParamS
 from trio_kit.input import CcLearnMap, KeyboardPiano, MidiInput
 from trio_kit.params import ParamRegistry
 from trio_kit.preset import ExtraValidator, Preset, PresetError, PresetLibrary, validate_preset_id
+from trio_kit.seq import validate_extras as validate_shared_extras
 from trio_kit.skins import SkinLibrary
 from trio_kit.tui import Canvas, CanvasApp, FocusRing, PianoWidget, Rect
 from trio_kit.tui.widgets import ParamWidget, TextField, Widget
@@ -191,7 +192,7 @@ class Shell:
             data_dir=data_dir,
             factory_package=spec.factory_package,
             factory_dir=spec.factory_presets_dir,
-            extras_validator=spec.extras_validator,
+            extras_validator=lambda extras: validate_shared_extras(extras, spec.extras_validator),
         )
         self.keyboard = KeyboardPiano()
         self._known_params = dict(self.engine.param_snapshot)
@@ -203,6 +204,7 @@ class Shell:
         self._loaded_extras = _copy_json_value(self._known_extras)
         self.current_preset: Preset | None = None
         self.current_screen = "main"
+        self._screen_before_sequencer: str | None = None
         self.status_message: str | None = None
         self.overlay: str | None = None
         self.overlay_index = 0
@@ -303,7 +305,7 @@ class Shell:
         """Validate and apply instrument extras through its thread-safe engine hook."""
         if not isinstance(extras, Mapping):
             raise TypeError("instrument extras must be a mapping")
-        validated = self.spec.extras_validator(dict(extras)) if self.spec.extras_validator is not None else dict(extras)
+        validated = validate_shared_extras(dict(extras), self.spec.extras_validator)
         frozen = _copy_json_value(validated)
         if not isinstance(frozen, dict):
             raise TypeError("validated instrument extras must be a mapping")
@@ -507,7 +509,8 @@ class Shell:
     def _overlay_rows(self) -> tuple[str, ...]:
         if self.overlay == "help":
             rows = (
-                "F1 help   F2-F5 instrument screens   F6 / Shift+F6 skin",
+                "F1 help   F2-F5 instrument screens   Shift+F3 sequencer   F6 / Shift+F6 skin",
+                "Sequencer focus: click/drag/right-click steps; arrows, Enter, PgUp/Dn; A/M/O/R/L arp",
                 "F7 MIDI picker   F8 preset library   F9 panic",
                 "Ctrl+L MIDI CC learn   Ctrl+P command palette",
                 "Ctrl+Z undo   Ctrl+Y redo   Ctrl+Q quit",
@@ -802,6 +805,14 @@ class Shell:
         if key == "f9":
             self.panic()
             return True
+        if key in {"s-f3", "shift-f3"} and self.spec.on_screen is not None:
+            if self.current_screen != "s-f3":
+                self._screen_before_sequencer = self.current_screen
+            self.current_screen = "s-f3"
+            self.spec.on_screen("s-f3", self)
+            self.status_message = f"{self.spec.name} sequencer"
+            self.invalidate()
+            return True
         if key == "c-p":
             self.open_overlay("palette")
             return True
@@ -815,10 +826,24 @@ class Shell:
             self.redo()
             return True
         if key == "escape":
+            if self.current_screen == "s-f3" and self.spec.on_screen is not None:
+                self.spec.on_screen("seq-return", self)
+                self._screen_before_sequencer = None
+                self.invalidate()
+                return True
             if self.widgets.focused is not None:
                 self.widgets.clear_focus()
                 return True
             return False
+        if key == "space":
+            current = self._known_extras.get("sequencer", {})
+            if isinstance(current, Mapping):
+                settings = dict(current)
+                settings["playing"] = not bool(settings.get("playing", False))
+                extras = dict(self._known_extras)
+                extras["sequencer"] = settings
+                self.set_extras(extras)
+            return True
         if key.startswith("f") and key[1:].isdigit() and key in {"f2", "f3", "f4", "f5"}:
             if self.spec.on_screen is not None:
                 self.current_screen = key.lower()
@@ -889,9 +914,14 @@ class Shell:
 
     def snapshot(self, width: int = 100, height: int = 30, *, screen: str = "main") -> str:
         overlays = {"main", "help", "palette", "skins", "midi", "presets"}
-        if screen not in overlays and screen not in self.spec.screen_names:
+        if screen != "sequencer" and screen not in overlays and screen not in self.spec.screen_names:
             raise ValueError("unknown snapshot screen")
-        if screen in self.spec.screen_names:
+        if screen == "sequencer":
+            if self.spec.on_screen is None:
+                raise ValueError("instrument has no sequencer screen")
+            self.current_screen = "s-f3"
+            self.spec.on_screen("s-f3", self)
+        elif screen in self.spec.screen_names:
             key = f"f{self.spec.screen_names.index(screen) + 2}"
             self.current_screen = key
             if self.spec.on_screen is not None:

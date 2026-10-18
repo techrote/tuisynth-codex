@@ -12,17 +12,29 @@ Both are mandatory `trio_kit` modules integrated into all three instruments. Imp
 
 ### Model (`trio_kit.seq`)
 
+- `extras.sequencer` is a validated object with `pattern`, `tempo`, `swing`, `playing` and
+  `arpeggiator` members. `pattern` contains `length` and `lanes`; lanes are arrays of steps.
+  Arpeggiator fields are `enabled`, `mode`, `octaves`, `rate`, `latch` and `seed`. Omitted
+  shared settings receive deterministic defaults. Instrument validators see only their private
+  extras; the shared preset validator preserves both areas.
 - `Pattern`: 16 steps (lengths 1-32 allowed), up to 4 lanes. Each step: `on`, `note`
   (MIDI 0-127 or `None` = "use held chord"), `velocity` 0-1, `gate` 0.05-1 of a step,
   `probability` 0-1. Stored in presets under `extras.sequencer` (validated).
-- `Transport`: tempo 40-240 BPM, swing 0-0.6 (delays even 16th steps), playing/stopped.
+- `Transport`: tempo 40-240 BPM, swing 0-0.6. Swing delays the even-numbered sixteenth-note
+  ticks (one-based counting) by `swing * one unswung sixteenth`; boundaries are computed from
+  the transport anchor rather than accumulated rounded durations.
 - Scheduling happens **inside the engine** at block level: for each block the sequencer
   computes step boundaries falling in the block and pushes `NoteOn`/`NoteOff` with `frame`
-  offsets (sample-accurate, see TRIO-ENGINE). It uses its own `note_id`s and always sends a
-  `NoteOff` for every `NoteOn`, including on stop, tempo change and pattern edit.
+  offsets (sample-accurate, see TRIO-ENGINE). It uses an engine-owned `note_id` range and sends a
+  `NoteOff` for every generated `NoteOn`, including progression, stop, tempo change, pattern edit
+  and panic.
 - `Arpeggiator`: modes `up`, `down`, `updown`, `random` (seeded), `as-played`; octaves 1-4;
   rate 1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32; latch on/off. Input is the currently held notes
   from any keyboard; output replaces direct note triggering while enabled.
+- The shared `SequencerProcessor` observes routed note events from MIDI, computer keyboard and
+  on-screen piano, plus LOOM's explicit held-pitch event while chord mode filters direct delivery.
+  Latched notes remain eligible until panic or an input release after latch is disabled. Arp notes
+  trigger immediately on the first held input and then use the selected rate.
 - Optional MIDI clock follow (24 ppqn, Start/Stop/Continue) is allowed only if it is fully
   tested with the fake MIDI backend; otherwise leave it out.
 
@@ -32,8 +44,14 @@ Each instrument places a step-grid widget in its own visual language: AURORA as 
 spectral "pillars" on the SPACE screen, LOOM as knots on a thread across the panel row, DRIFT
 as a ring of 16 pressure cells in a drawer. In every instrument `Shift+F3` opens/focuses the
 sequencer area. Mouse: click toggles a step, drag vertically sets velocity, right-click sets
-probability; `Space` starts/stops the transport (Space is not a note key). Keyboard twin:
-arrows select step, `Enter` toggles, `PageUp/PageDown` velocity.
+probability; `Space` starts/stops the transport (Space is not a note key). `Escape` returns to the
+instrument screen that was open before the sequencer. Keyboard twin: arrows select step, `Enter`
+toggles, `PageUp/PageDown` velocity.
+- The shared `SequencerWidget` draws the instrument-specific motif, preserves the pattern in
+  `extras.sequencer`, and adds up/down arrows for lane selection. `[`/`]` adjusts tempo and
+  `,`/`.` adjusts swing. While the grid has focus, `A` enables the arp, `M` cycles mode, `O`
+  cycles octave count, `R` cycles rate, and `L` toggles latch. Terminals that encode modified F3
+  using the legacy F15 key normalize it to the same sequencer action.
 
 ### Tests
 

@@ -31,6 +31,7 @@ from trio_kit.events import (
 from trio_kit.engine.master import MasterBus
 from trio_kit.engine.voices import VoiceManager
 from trio_kit.params import ParamError, ParamRegistry, ParamSnapshot, ParamState
+from trio_kit.seq import SequenceConfig, SequencerProcessor
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +141,8 @@ class Engine:
         self._backend_name = "offline"
         self._last_error: str | None = None
         self._closed = False
+        self._absolute_frame = 0
+        self.sequencer = SequencerProcessor(sample_rate, seed=seed)
         seed_setter = getattr(instrument, "set_engine_seed", None)
         if callable(seed_setter):
             seed_setter(seed)
@@ -195,7 +198,7 @@ class Engine:
                 dispatch.append(event)
         if preset_extras is not None:
             try:
-                self.set_extras(_thaw_preset_value(preset_extras))
+                self.set_extras(_thaw_preset_value(preset_extras), replace=True)
             except Exception as error:
                 self._last_error = f"preset extras: {error}"[:256]
         try:
@@ -225,6 +228,11 @@ class Engine:
                 self._last_error = f"instrument voice-limit callback failed: {error}"[:256]
         self._notify_instrument_voice_count()
 
+        try:
+            dispatch = list(self.sequencer.process_block(self._absolute_frame, dispatch))
+        except Exception as error:
+            self._last_error = f"sequencer block scheduling failed: {error}"[:256]
+
         result = np.zeros((self.block, 2), dtype=np.float32)
         cursor = 0
         for event in sorted(dispatch, key=lambda item: getattr(item, "frame", 0)):
@@ -239,6 +247,7 @@ class Engine:
         result = self.master.process(result)
         if self.master.nonfinite_resets != resets_before:
             self.voice_manager.reset()
+            self.sequencer.reset()
             reset = getattr(self.instrument, "reset", None)
             if callable(reset):
                 try:
@@ -248,6 +257,7 @@ class Engine:
         elapsed = time.perf_counter() - started
         relative = elapsed / (self.block / self.sample_rate)
         self._render_load = relative if self._render_load == 0.0 else 0.9 * self._render_load + 0.1 * relative
+        self._absolute_frame += self.block
         return result
 
     def _render_segment(self, frames: int, params: ParamSnapshot) -> np.ndarray:
@@ -312,15 +322,26 @@ class Engine:
 
     def get_extras(self) -> dict[str, object]:
         getter = getattr(self.instrument, "get_extras", None)
-        return getter() if callable(getter) else {}
+        extras = dict(getter()) if callable(getter) else {}
+        extras["sequencer"] = self.sequencer.config.to_dict()
+        return extras
 
-    def set_extras(self, extras: Mapping[str, object]) -> None:
+    def set_extras(self, extras: Mapping[str, object], *, replace: bool = False) -> None:
+        if not isinstance(extras, Mapping):
+            raise ValueError("preset extras must be an object")
+        private = dict(extras)
+        shared = private.pop("sequencer", None)
+        if shared is not None:
+            config = SequenceConfig.from_dict(shared)
+            self.sequencer.set_config(config)
+        elif replace:
+            self.sequencer.set_config(SequenceConfig())
         setter = getattr(self.instrument, "set_extras", None)
         if not callable(setter):
-            if extras:
+            if private:
                 raise ValueError("instrument does not support preset extras")
             return
-        setter(extras)
+        setter(private)
 
     def record_callback_error(self, error: BaseException) -> None:
         self._callback_errors += 1

@@ -12,7 +12,7 @@ from weakref import WeakKeyDictionary
 from trio_kit.events import Event, InstrumentEvent, NoteOff, NoteOn, Panic, ParamSet, RetargetNote
 from trio_kit.params import ParamSpec
 from trio_kit.shell import InstrumentSpec, Shell
-from trio_kit.tui import Canvas, Rect
+from trio_kit.tui import Canvas, Rect, SequencerWidget
 from trio_kit.tui.mouse import MouseInput
 from trio_kit.tui.widgets import ParamWidget, Widget
 from trio_loom.strum import DEFAULT_TUNING, StrumModel
@@ -195,8 +195,11 @@ class _View:
     height: int = 30
     surface: StringSurface | None = None
     sympathy: SympatheticColumn | None = None
+    sequencer: SequencerWidget | None = None
+    sequencer_visible: bool = False
     held: dict[int, float] = field(default_factory=dict)
     direct_ids: set[int] = field(default_factory=set)
+    arp_ids: set[int] = field(default_factory=set)
     held_lock: threading.RLock = field(default_factory=threading.RLock)
 
     def held_pitches(self) -> tuple[float, ...]:
@@ -506,7 +509,11 @@ class LoomUI:
             sympathy_bounds = Rect(width - 31, 3, 29, 10)
         view.surface = StringSurface(view, surface_bounds, clock=self.clock)
         view.sympathy = SympatheticColumn(view, sympathy_bounds)
-        result: list[Widget] = [view.surface, view.sympathy]
+        seq_y = 13
+        seq_height = max(4, min(9, height - (3 if compact else 4) - seq_y - 1))
+        view.sequencer = SequencerWidget(shell, Rect(2, seq_y, width - 4, seq_height), "thread")
+        view.sequencer.visible = view.sequencer_visible
+        result: list[Widget] = [view.surface, view.sympathy, view.sequencer]
         if compact:
             panel_y = 13
             widths = [(width - 4) // 5] * 5
@@ -537,6 +544,10 @@ class LoomUI:
                         )
                     )
                 x += panel_width
+        if view.sequencer_visible:
+            for widget in result:
+                if widget is not view.sequencer:
+                    widget.visible = False
         return tuple(result)
 
     def draw(self, canvas: Canvas, shell: Shell) -> None:
@@ -567,6 +578,28 @@ class LoomUI:
 
     def on_screen(self, screen: str, shell: Shell) -> None:
         view = self.view(shell)
+        if screen == "seq-return":
+            view.sequencer_visible = False
+            if view.sequencer is not None:
+                view.sequencer.visible = False
+            previous = shell._screen_before_sequencer
+            target = previous if previous in {"f2", "f3", "f4", "f5"} else "f3"
+            shell.current_screen = target
+            self.on_screen(target, shell)
+            return
+        if screen in {"s-f3", "shift-f3"}:
+            view.sequencer_visible = True
+            if view.sequencer is not None:
+                view.sequencer.visible = True
+                shell.widgets.focus(view.sequencer.tag)
+            shell.invalidate()
+            return
+        view.sequencer_visible = False
+        if view.sequencer is not None:
+            view.sequencer.visible = False
+        for widget in shell.widgets.widgets:
+            if widget.tag.startswith("loom-"):
+                widget.visible = True
         if screen == "f2" and view.surface is not None:
             shell.widgets.focus(view.surface.tag)
         elif screen == "f3":
@@ -586,7 +619,7 @@ class LoomUI:
 
     def footer(self, shell: Shell) -> str:
         del shell
-        return "F2 strings · F3 panels · F4 sympathy · F5 presets · F6 skin · F9 panic · Ctrl+Q quit"
+        return "F2 strings · F3 panels · Shift+F3 sequencer · F4 sympathy · F5 presets · F6 skin · F9 · ^Q"
 
     def help_rows(self, shell: Shell) -> tuple[str, ...]:
         del shell
@@ -594,6 +627,7 @@ class LoomUI:
             "LOOM strings: left-drag crosses and plays rows in order; bow mode sustains until release",
             "LOOM right-click mutes a string; Up/Down select; Enter plays; comma/period strum",
             "Slash toggles direct/chord piano mode; in chord mode held keys tune strings only",
+            "Shift+F3 sequencer: click knots, drag velocity, right-click chance; A arp, M mode, O octaves, R rate, L latch",
             "Compact panels: Left/Right choose a parameter; Up/Down adjust; right-click resets",
         )
 
@@ -604,10 +638,14 @@ class LoomUI:
                 view.held[event.note_id] = event.pitch
                 held = tuple(sorted(view.held.values()))[:12]
                 direct = int(shell._known_params.get("play.mode", 0)) == 0
+                arp_settings = shell._known_extras.get("sequencer", {}).get("arpeggiator", {})
+                arp = isinstance(arp_settings, Mapping) and bool(arp_settings.get("enabled", False))
                 if direct:
                     view.direct_ids.add(event.note_id)
+                elif arp:
+                    view.arp_ids.add(event.note_id)
             routed: list[Event] = [InstrumentEvent("held", held)]
-            if direct:
+            if direct or arp:
                 routed.append(event)
             return tuple(routed)
         if isinstance(event, NoteOff):
@@ -615,22 +653,26 @@ class LoomUI:
                 view.held.pop(event.note_id, None)
                 direct = event.note_id in view.direct_ids
                 view.direct_ids.discard(event.note_id)
+                arp = event.note_id in view.arp_ids
+                view.arp_ids.discard(event.note_id)
                 held = tuple(sorted(view.held.values()))[:12]
             routed = [InstrumentEvent("held", held)]
-            if direct:
+            if direct or arp:
                 routed.append(event)
             return tuple(routed)
         if isinstance(event, RetargetNote):
             with view.held_lock:
                 direct = event.note_id in view.direct_ids
+                arp = event.note_id in view.arp_ids
                 if event.note_id in view.held:
                     view.held[event.note_id] = event.pitch
                 held = tuple(sorted(view.held.values()))[:12]
-            return (InstrumentEvent("held", held), event) if direct else (InstrumentEvent("held", held),)
+            return (InstrumentEvent("held", held), event) if direct or arp else (InstrumentEvent("held", held),)
         if isinstance(event, Panic):
             with view.held_lock:
                 view.held.clear()
                 view.direct_ids.clear()
+                view.arp_ids.clear()
             return (InstrumentEvent("held", ()), event)
         if isinstance(event, ParamSet) and event.key == "play.mode":
             with view.held_lock:

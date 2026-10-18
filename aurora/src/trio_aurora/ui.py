@@ -9,7 +9,7 @@ from collections import deque
 from collections.abc import Mapping, Sequence
 from weakref import WeakKeyDictionary
 
-from trio_kit.tui import Canvas, Rect
+from trio_kit.tui import Canvas, Rect, SequencerWidget
 from trio_kit.tui.mouse import MouseInput
 from trio_kit.tui.widgets import Choice, Fader, ListBox, Tabs, Widget
 
@@ -325,6 +325,8 @@ class _AuroraView:
         self.controls: dict[str, Widget] = {}
         self.library_presets: ListBox | None = None
         self.library_skins: ListBox | None = None
+        self.sequencer: SequencerWidget | None = None
+        self.sequencer_open = False
         self._waterfall: deque[tuple[float, ...]] = deque(maxlen=8)
         self._last_waterfall_row = 0.0
 
@@ -333,12 +335,29 @@ class _AuroraView:
         return SCREEN_NAMES[self.screen_index]
 
     def on_screen(self, key: str, shell) -> None:
+        if key == "seq-return":
+            self.sequencer_open = False
+            previous = shell._screen_before_sequencer
+            target = previous if previous in {"f2", "f3", "f4", "f5"} else "f2"
+            shell.current_screen = target
+            self.on_screen(target, shell)
+            return
+        if key in {"s-f3", "shift-f3"}:
+            self.sequencer_open = True
+            self._select_screen(2, notify=False)
+            if self.sequencer is not None:
+                shell.widgets.focus(self.sequencer.tag)
+            shell.invalidate()
+            return
         if key.startswith("f") and key[1:].isdigit():
+            self.sequencer_open = False
             index = min(3, max(0, int(key[1:]) - 2))
             self._select_screen(index, notify=False)
             shell.widgets.clear_focus()
 
     def _select_screen(self, index: int, *, notify: bool = True) -> None:
+        if notify:
+            self.sequencer_open = False
         self.screen_index = min(3, max(0, index))
         if self.tabs is not None:
             self.tabs.selected = self.screen_index
@@ -351,6 +370,8 @@ class _AuroraView:
             self.library_presets.visible = visible == "library"
         if self.library_skins is not None:
             self.library_skins.visible = visible == "library"
+        if self.sequencer is not None:
+            self.sequencer.visible = self.sequencer_open
         if notify:
             self.shell.current_screen = f"f{self.screen_index + 2}"
             self.shell.widgets.clear_focus()
@@ -382,7 +403,7 @@ class _AuroraView:
             start_y = 12 if not compact else 9
             columns = 7 if not compact else 3
         else:
-            start_y = 6
+            start_y = 13
             columns = 6 if not compact else 4
         row_height = 1 if compact and page in {"play", "shape"} else 2
         max_rows = max(1, (self._piano_y(width, height) - start_y) // row_height)
@@ -399,7 +420,9 @@ class _AuroraView:
         self.shell.set_param(key, value)
 
     def _on_harmonics(self, values: Sequence[float]) -> None:
-        self.shell.set_extras({"harmonics": list(values)})
+        extras = dict(self.shell._known_extras)
+        extras["harmonics"] = list(values)
+        self.shell.set_extras(extras)
 
     def _load_library_preset(self, index: int, item: str) -> None:
         presets = self.shell.presets.list_presets()
@@ -445,6 +468,10 @@ class _AuroraView:
         registry = shell.registry
         screen_keys = {"play": _PLAY_KEYS, "shape": _SHAPE_KEYS, "space": _SPACE_KEYS}
         widgets: list[Widget] = [self.tabs, self.painter]
+        seq_bounds = Rect(2, 5, max(1, width - 4), max(4, min(8, self._piano_y(width, height) - 5)))
+        self.sequencer = SequencerWidget(shell, seq_bounds, "spectral")
+        self.sequencer.visible = self.screen == "space"
+        widgets.append(self.sequencer)
         for page, keys in screen_keys.items():
             bounds = self._controls_layout(width, height, page, len(keys))
             for index, (key, rect) in enumerate(zip(keys, bounds)):
@@ -602,7 +629,7 @@ class _AuroraView:
         if self.screen == "shape":
             return "SHAPE · ↑/↓ .05 · PgUp/Dn .25 · Del · ^R random · ^E/O even/odd · ^Q"
         if self.screen == "space":
-            return "SPACE · Tab controls · F2-F5 · F6 skin · F8 presets · F9 panic · ^Q quit"
+            return "SPACE · Shift+F3 sequencer · Tab controls · F6 skin · F8 presets · F9 · ^Q"
         return "LIBRARY · Tab list · arrows preview · Enter apply · F8 actions · F2-F5 · ^Q"
 
     def refresh_when(self, shell) -> bool:
