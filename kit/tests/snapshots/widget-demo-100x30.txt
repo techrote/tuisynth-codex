@@ -1,0 +1,30 @@
+┌─TRIO / TUI WIDGET DEMO─────────────────────────────────────────────────────────100x30────────────┐
+│                                                                                                  │
+│  [Voice]                        Modulation                     Effects                           │
+│                                                                                                  │
+│                                                                                                  │
+│   Level                 0.65    Cutoff                  Enabled [OFF]      Wave: < Triangle >    │
+│                                       //--_\|                                                    │
+│   ----------------|---------          1200.00                                                    │
+│                                                                                                  │
+│                                                                                                  │
+│   +-XY / MOD-------------+     Output                               [ Apply ]                    │
+│   |                      |     L ################---|--                                          │
+│   |                      |     R ############------|---                                          │
+│   |                      |                                                                       │
+│   |                      |                                                                       │
+│   |          +           |                                                                       │
+│   |                      |     Preset: Glass Tide                                                │
+│   |                      |                                                                       │
+│   |                      |                                     Library                           │
+│   +----------------------+                                       Init                            │
+│                                                                > Glass Tide                      │
+│                                                                  Long Echo                       │
+│                                                                  Night Air                       │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+└─Tab focus  Arrows adjust  Delete resets  Ctrl+Q quits────────────────────────────────────────────┘

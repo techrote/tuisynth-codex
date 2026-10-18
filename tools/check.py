@@ -124,6 +124,12 @@ def check_wheels(packages: Sequence[str]) -> None:
                 f"assert importlib.metadata.version({distribution!r}) == '0.1.0'; "
                 f"assert importlib.import_module({import_name!r}).__version__ == '0.1.0'"
             )
+            if package == "kit":
+                check_script += (
+                    "; from trio_kit.tui import Canvas, CanvasApp, FocusRing; "
+                    "from trio_kit.tui.testing import HeadlessApp; "
+                    "assert Canvas and CanvasApp and FocusRing and HeadlessApp"
+                )
             run_process(
                 [str(python), "-c", check_script],
                 label=f"installed {distribution} metadata and import smoke check",
