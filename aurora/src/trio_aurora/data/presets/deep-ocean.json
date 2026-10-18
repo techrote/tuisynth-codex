@@ -1,0 +1,24 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "aurora",
+  "id": "deep-ocean",
+  "name": "Deep Ocean",
+  "description": "A subdued, low-centered pad with a dark, slowly moving edge.",
+  "params": {
+    "spec.count": 0,
+    "spec.bw": 165,
+    "spec.bwscale": 0.45,
+    "spec.tilt": -8,
+    "spec.stretch": 0.995,
+    "osc.octave": -1,
+    "osc.width": 0.75,
+    "amp.a": 3.8,
+    "flt.cut": 1450,
+    "flt.env": 0.35,
+    "lfo.rate": 0.06,
+    "fx.reverb.damp": 0.78,
+    "fx.reverb.mix": 0.43
+  },
+  "extras": {"harmonics": [1.0, 0.05, 0.58, 0.03, 0.34, 0.02, 0.2, 0.01, 0.12]},
+  "tags": ["pad", "dark", "sub"]
+}

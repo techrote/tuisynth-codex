@@ -53,6 +53,7 @@ def _preset_library(spec: InstrumentSpec, data_dir: str | None) -> PresetLibrary
         data_dir=data_dir,
         factory_package=spec.factory_package,
         factory_dir=spec.factory_presets_dir,
+        extras_validator=spec.extras_validator,
     )
 
 
@@ -114,6 +115,20 @@ def _write_wav(path: Path, samples: np.ndarray, sample_rate: int) -> None:
         output.writeframes(quantized.tobytes())
 
 
+def _prepare_offline_instrument(engine: OfflineEngine) -> None:
+    """Wait for optional asynchronous instrument state before offline notes render."""
+    instrument = engine.instrument
+    wait = getattr(instrument, "wait_for_regeneration", None)
+    if not callable(wait):
+        return
+    wait()
+    # Promote worker output at the engine's next real block boundary, then drain
+    # the remainder so the caller's first musical event begins on a fresh block.
+    engine.render(1)
+    engine.render(engine.block - 1)
+    wait(active=True)
+
+
 def _render(
     spec: InstrumentSpec,
     path: Path,
@@ -125,10 +140,22 @@ def _render(
 ) -> int:
     if not math.isfinite(seconds) or not 0.01 <= seconds <= 120.0:
         raise ValueError("--seconds must be finite and within 0.01..120")
-    engine = OfflineEngine(spec.instrument_factory(), sample_rate=sample_rate, seed=seed, registry=spec.registry)
+    engine = OfflineEngine(
+        spec.instrument_factory(),
+        sample_rate=sample_rate,
+        seed=seed,
+        max_voices=spec.max_voices,
+        registry=spec.registry,
+    )
     try:
         if preset is not None:
             engine.push(PresetApply(engine.registry.validate(preset.params), preset.extras))
+            # Preset extras apply when the engine drains its queue at the first
+            # block boundary. Give that request time to regenerate before notes.
+            if callable(getattr(engine.instrument, "wait_for_regeneration", None)):
+                engine.render(1)
+                engine.render(engine.block - 1)
+        _prepare_offline_instrument(engine)
         allocator = NoteIds(1)
         for pitch in notes:
             engine.push(NoteOn(allocator.next(), pitch, 0.7, "offline-render"))
@@ -159,10 +186,21 @@ def _selftest(spec: InstrumentSpec, data_dir: str | None, sample_rate: int, seed
         raise RuntimeError("selftest master limiter did not hold its output ceiling")
     renders = 0
     for preset_index, preset in enumerate(presets):
-        engine = OfflineEngine(spec.instrument_factory(), sample_rate=sample_rate, seed=seed, registry=spec.registry)
+        engine = OfflineEngine(
+            spec.instrument_factory(),
+            sample_rate=sample_rate,
+            seed=seed,
+            max_voices=spec.max_voices,
+            registry=spec.registry,
+        )
         try:
             engine.push(PresetApply(engine.registry.validate(preset.params), preset.extras))
-            engine.push(NoteOn(preset_index + 1, 60, 0.7, "selftest"))
+            if callable(getattr(engine.instrument, "wait_for_regeneration", None)):
+                engine.render(1)
+                engine.render(engine.block - 1)
+            _prepare_offline_instrument(engine)
+            for note_id, pitch in enumerate((60, 64, 67), start=1):
+                engine.push(NoteOn(note_id, pitch, 0.7, "selftest"))
             rendered = engine.render(2 * sample_rate)
             if rendered.shape != (2 * sample_rate, 2) or not np.isfinite(rendered).all():
                 raise RuntimeError(f"preset {preset.id!r} produced invalid audio")
@@ -175,7 +213,16 @@ def _selftest(spec: InstrumentSpec, data_dir: str | None, sample_rate: int, seed
         finally:
             engine.close()
     for skin_id in skins.ids:
-        shell = Shell(spec, no_audio=True, data_dir=data_dir, skin_id=skin_id, mono=skin_id == "mono", start_midi=False)
+        shell = Shell(
+            spec,
+            no_audio=True,
+            data_dir=data_dir,
+            skin_id=skin_id,
+            mono=skin_id == "mono",
+            start_midi=False,
+            sample_rate=sample_rate,
+            seed=seed,
+        )
         try:
             frame = shell.snapshot(100, 30)
             if len(frame.splitlines()) != 30 or not any(char.strip() for char in frame):
@@ -249,7 +296,16 @@ def run_cli(
         if arguments.snapshot:
             width, height = _parse_snapshot_size(arguments.snapshot)
             snapshot_mono = arguments.mono or arguments.ascii or arguments.skin is None
-            shell = Shell(spec, no_audio=True, skin_id=arguments.skin, mono=snapshot_mono, data_dir=arguments.data_dir, start_midi=False, sample_rate=arguments.sample_rate)
+            shell = Shell(
+                spec,
+                no_audio=True,
+                skin_id=arguments.skin,
+                mono=snapshot_mono,
+                data_dir=arguments.data_dir,
+                start_midi=False,
+                sample_rate=arguments.sample_rate,
+                seed=arguments.seed,
+            )
             try:
                 if arguments.preset:
                     shell.load_preset(arguments.preset)
@@ -262,6 +318,7 @@ def run_cli(
             no_audio=arguments.no_audio,
             device=_device_value(arguments.device),
             sample_rate=arguments.sample_rate,
+            seed=arguments.seed,
             skin_id=arguments.skin,
             mono=arguments.mono or arguments.ascii,
             data_dir=arguments.data_dir,

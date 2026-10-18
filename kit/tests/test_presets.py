@@ -57,13 +57,18 @@ def make_document(**updates: object) -> dict[str, object]:
 
 
 def test_valid_preset_fills_defaults_and_round_trips() -> None:
-    preset = parse_preset(json.dumps(make_document()), "aurora", make_registry())
+    preset = parse_preset(
+        json.dumps(make_document(description="A wide, slowly evolving choir.")),
+        "aurora",
+        make_registry(),
+    )
 
     assert preset.id == "test-pad"
     assert preset.schema == "trio-preset/1"
     assert preset.params == {"amp.level": -12, "filter.cutoff": 440, "voice.mode": 1}
     assert preset.extras == {"harmonics": [1.0, 0.5]}
     assert preset.tags == ("pad",)
+    assert preset.description == "A wide, slowly evolving choir."
     assert parse_preset(serialize_preset(preset), "aurora", make_registry()) == preset
 
 
@@ -89,6 +94,8 @@ def test_unknown_parameters_warn_and_are_ignored() -> None:
         make_document(tags="pad"),
         make_document(name=5),
         make_document(name="\ud800"),
+        make_document(description=5),
+        make_document(description="x" * 513),
         make_document(unknown="field"),
         {"schema": "trio-preset/1"},
     ),

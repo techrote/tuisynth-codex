@@ -1,0 +1,20 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "aurora",
+  "id": "cathedral-air",
+  "name": "Cathedral Air",
+  "description": "A narrow-bandwidth, organ-like tone with a spacious sustain.",
+  "params": {
+    "spec.count": 2,
+    "spec.bw": 12,
+    "spec.bwscale": 0.55,
+    "spec.tilt": -4,
+    "osc.width": 0.9,
+    "amp.a": 0.7,
+    "amp.s": 0.9,
+    "fx.reverb.size": 1.1,
+    "fx.reverb.mix": 0.4
+  },
+  "extras": {"harmonics": [1.0, 0.02, 0.68, 0.01, 0.45, 0.01, 0.3, 0.0, 0.21, 0.0, 0.15, 0.0]},
+  "tags": ["pad", "organ", "narrow"]
+}

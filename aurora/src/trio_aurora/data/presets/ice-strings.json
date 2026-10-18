@@ -1,0 +1,23 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "aurora",
+  "id": "ice-strings",
+  "name": "Ice Strings",
+  "description": "A brighter string-like pad with a quick bow-on attack.",
+  "params": {
+    "spec.count": 1,
+    "spec.bw": 82,
+    "spec.bwscale": 1.25,
+    "spec.tilt": -2,
+    "osc.detune": 9,
+    "osc.width": 0.82,
+    "amp.a": 0.16,
+    "amp.d": 1.8,
+    "amp.s": 0.72,
+    "flt.mode": 1,
+    "flt.cut": 6200,
+    "flt.res": 0.18
+  },
+  "extras": {"harmonics": [1.0, 0.82, 0.64, 0.54, 0.46, 0.38, 0.32, 0.27, 0.22, 0.18, 0.14, 0.11]},
+  "tags": ["pad", "strings", "bright"]
+}

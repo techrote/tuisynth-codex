@@ -1,0 +1,19 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "aurora",
+  "id": "glacier-choir",
+  "name": "Glacier Choir",
+  "description": "A slow, wide choir with a cool upper shimmer.",
+  "params": {
+    "spec.count": 1,
+    "spec.bw": 76,
+    "spec.bwscale": 0.8,
+    "osc.detune": 14,
+    "osc.width": 0.96,
+    "amp.a": 2.4,
+    "fx.chorus.mix": 0.35,
+    "fx.reverb.mix": 0.48
+  },
+  "extras": {"harmonics": [1.0, 0.25, 0.5, 0.18, 0.38, 0.12, 0.3, 0.1, 0.22, 0.08, 0.18, 0.06]},
+  "tags": ["pad", "choir", "wide"]
+}

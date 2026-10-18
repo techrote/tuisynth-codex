@@ -1,0 +1,21 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "aurora",
+  "id": "solar-bloom",
+  "name": "Solar Bloom",
+  "description": "A bright, gently detuned bloom that opens as the note settles.",
+  "params": {
+    "spec.count": 2,
+    "spec.bw": 105,
+    "spec.tilt": -1,
+    "spec.stretch": 1.008,
+    "osc.detune": 21,
+    "osc.width": 0.92,
+    "amp.a": 0.65,
+    "flt.cut": 8400,
+    "flt.env": 0.55,
+    "fx.chorus.mix": 0.27
+  },
+  "extras": {"harmonics": [1.0, 0.72, 0.56, 0.45, 0.4, 0.34, 0.3, 0.26, 0.22, 0.18, 0.14, 0.1]},
+  "tags": ["pad", "bright", "detuned"]
+}

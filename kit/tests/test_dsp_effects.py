@@ -97,6 +97,30 @@ def test_reverb_mix_zero_is_identity_and_size_keeps_all_lines_longer_than_a_bloc
     assert np.isfinite(reverb.process(np.zeros((BLOCK, 2), dtype=np.float32))).all()
 
 
+def test_reverb_damping_is_a_validated_normalized_control() -> None:
+    reverb = Reverb(48_000, damp=0.4)
+    before = reverb._damping_alpha
+    reverb.set_parameters(damp=1.0)
+    assert reverb.damp == 1.0
+    assert reverb._damping_alpha > before
+    with pytest.raises(ValueError, match="damp"):
+        reverb.set_parameters(size=1.2, damp=1.1)
+    assert reverb.size == 0.8
+    assert reverb.damp == 1.0
+
+
+def test_reverb_zero_damping_initializes_and_repeated_updates_are_stable() -> None:
+    reverb = Reverb(48_000, damp=0.0)
+    signal = np.zeros((BLOCK, 2), dtype=np.float32)
+    signal[0] = (0.5, -0.5)
+    assert np.isfinite(reverb.process(signal)).all()
+    numerator = reverb._damping_b.copy()
+    denominator = reverb._damping_a.copy()
+    reverb.set_damp(0.0)
+    assert np.array_equal(reverb._damping_b, numerator)
+    assert np.array_equal(reverb._damping_a, denominator)
+
+
 def test_reverb_impulse_tail_is_finite_and_falls_below_minus_ninety_db() -> None:
     sample_rate = 48_000
     reverb = Reverb(sample_rate, size=1.6, mix=1)

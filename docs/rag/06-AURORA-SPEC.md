@@ -28,14 +28,17 @@ for k in 1..H:                                  H = spec.count (16, 32 or 64)
     add A_k * gaussian(freq_bins, centre=f_k, sigma=bw_hz/2) to magnitude[]
 magnitude += spec.noise * 1e-3 * mean(magnitude)          optional noise floor
 phase_L, phase_R = uniform(0, 2pi) from Generator(seed=spec.seed*2), Generator(spec.seed*2+1)
+# DC and Nyquist bins are real-only and use phase 0
 table_L = irfft(magnitude * exp(i*phase_L)), table_R likewise
-normalise both by the same factor so max(abs) == 0.9
+normalise both by the same deterministic Parseval scale to RMS 0.16
 ```
 
 - Use vectorised NumPy only (`numpy.fft.irfft`, broadcasting the Gaussian over a window of
   +-4 sigma around each harmonic, not over all bins).
 - Bins above Nyquist are discarded; harmonics whose `f_k` exceeds 0.45 * sample rate are skipped.
-- Tables are cached by a hash of `(sample rate, zone, spectral params, harmonics)`.
+- Tables are cached by a hash of `(sample rate, seven zones, spectral params, harmonics)`.
+  The phase seed changes the randomized phases but not the scale or magnitude spectrum; the
+  shared normalization is derived from spectral power so equal profiles keep equal magnitude.
 - Regeneration runs on a **worker thread**, debounced 150 ms after the last spectral change.
   The audio thread swaps to the new table set at a block boundary and crossfades old->new over
   50 ms. Voices never stop sounding during regeneration. Memory bound: two table sets.
@@ -47,7 +50,7 @@ normalise both by the same factor so max(abs) == 0.9
   generated so that playback at ratio 1.0 sounds `zone_f0`), linear interpolation with
   wrap-around, vectorised per block, separate L/R tables. `osc.detune` adds a second, slightly detuned read head per channel (0-50 cents)
   mixed at -6 dB; `osc.width` crossfades between mono (L table both sides) and full L/R.
-- State-variable filter (2-pole, `lp`/`bp`/`hp`) from `trio_kit.dsp`, coefficients updated per
+- RBJ biquad filter (2-pole, `lp`/`bp`/`hp`) from `trio_kit.dsp`, coefficients updated per
   block with 5 ms smoothing; cutoff = `flt.cut * 2**(flt.env*fenv*5 + flt.key*(pitch-60)/12)`.
 - Amp ADSR and filter ADSR (`trio_kit.dsp.Adsr`, exponential segments, per-block vectorised).
 - One LFO per voice (`sine`, `triangle`, smooth random) with random start phase; target pitch

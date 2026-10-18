@@ -6,7 +6,7 @@ from trio_kit.demo import SineInstrument, demo_spec
 from trio_kit.engine import Engine, EngineTelemetry, SoundDeviceBackend
 from trio_kit.events import ControlChange, NoteOff, NoteOn, Panic
 from trio_kit.params import ParamSnapshot
-from trio_kit.shell import Shell
+from trio_kit.shell import InstrumentSpec, Shell
 from trio_kit.input import CcLearnMap
 from trio_kit.input import FakeMidiBackend, MidiInput
 from trio_kit.tui.testing import HeadlessApp
@@ -187,5 +187,28 @@ def test_instrument_screen_keys_are_delegated_to_the_spec(tmp_path) -> None:
         assert shell.handle_key("f3")
         assert visited == ["f3"]
         assert any(command_id == "screen-3" for command_id, _label, _action in shell._commands())
+    finally:
+        shell.shutdown()
+
+
+def test_instrument_spec_polyphony_seed_and_extras_validation_reach_shared_shell(tmp_path) -> None:
+    validate = lambda extras: {"profile": extras.get("profile", "default")}
+    base = demo_spec()
+    spec = InstrumentSpec(
+        identifier=base.identifier,
+        name=base.name,
+        instrument_factory=base.instrument_factory,
+        registry=base.registry,
+        factory_package=base.factory_package,
+        factory_presets_dir=base.factory_presets_dir,
+        factory_skins_dir=base.factory_skins_dir,
+        max_voices=3,
+        extras_validator=validate,
+    )
+    shell = Shell(spec, no_audio=True, seed=314, data_dir=tmp_path, start_midi=False)
+    try:
+        assert shell.engine.max_voices == 3
+        assert shell.engine.seed == 314
+        assert shell.presets.extras_validator is validate
     finally:
         shell.shutdown()

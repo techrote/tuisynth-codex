@@ -1,0 +1,19 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "aurora",
+  "id": "hollow-partials",
+  "name": "Hollow Partials",
+  "description": "An odd-harmonic hollow tone with a restrained stereo halo.",
+  "params": {
+    "spec.count": 1,
+    "spec.bw": 42,
+    "spec.tilt": -3,
+    "osc.width": 0.88,
+    "flt.mode": 2,
+    "flt.cut": 9800,
+    "amp.a": 1.1,
+    "fx.chorus.mix": 0.12
+  },
+  "extras": {"harmonics": [1.0, 0.0, 0.72, 0.0, 0.54, 0.0, 0.4, 0.0, 0.3, 0.0, 0.23, 0.0, 0.18, 0.0, 0.13]},
+  "tags": ["pad", "odd-harmonics", "hollow"]
+}

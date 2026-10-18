@@ -192,6 +192,13 @@ class Engine:
             self._last_error = str(error)[:256]
             snapshot = self._param_state.snapshot
 
+        on_block_boundary = getattr(self.instrument, "on_block_boundary", None)
+        if callable(on_block_boundary):
+            try:
+                on_block_boundary(snapshot)
+            except Exception as error:
+                self._last_error = f"instrument block-boundary callback failed: {error}"[:256]
+
         result = np.zeros((self.block, 2), dtype=np.float32)
         cursor = 0
         for event in sorted(dispatch, key=lambda item: getattr(item, "frame", 0)):
