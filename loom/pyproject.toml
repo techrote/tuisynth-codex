@@ -16,4 +16,4 @@ loom = "trio_loom.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-trio_loom = ["py.typed", "data/presets/*.json", "data/skins/*.txt"]
+trio_loom = ["py.typed", "data/presets/*.json", "data/skins/*.txt", "data/skins/*.toml"]

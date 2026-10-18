@@ -4,7 +4,7 @@ from dataclasses import replace
 
 from trio_kit.demo import SineInstrument, demo_spec
 from trio_kit.engine import Engine, EngineTelemetry, SoundDeviceBackend
-from trio_kit.events import ControlChange, NoteOff, NoteOn, Panic
+from trio_kit.events import ControlChange, InstrumentEvent, NoteOff, NoteOn, Panic
 from trio_kit.params import ParamSnapshot
 from trio_kit.shell import InstrumentSpec, Shell
 from trio_kit.input import CcLearnMap
@@ -210,5 +210,21 @@ def test_instrument_spec_polyphony_seed_and_extras_validation_reach_shared_shell
         assert shell.engine.max_voices == 3
         assert shell.engine.seed == 314
         assert shell.presets.extras_validator is validate
+    finally:
+        shell.shutdown()
+
+
+def test_instrument_event_router_and_contextual_help_hooks(tmp_path) -> None:
+    spec = replace(
+        demo_spec(),
+        event_router=lambda event, _shell: (InstrumentEvent("routed", (60,)),),
+        help_rows=lambda _shell: ("Instrument-only gesture help",),
+    )
+    shell = Shell(spec, no_audio=True, data_dir=tmp_path, start_midi=False)
+    try:
+        assert shell._push(NoteOn(881, 62, 0.7, "test"))
+        assert shell.engine.event_queue.drain() == (InstrumentEvent("routed", (60,)),)
+        shell.open_overlay("help")
+        assert "Instrument-only gesture help" in shell._overlay_rows()
     finally:
         shell.shutdown()

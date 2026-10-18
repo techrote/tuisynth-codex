@@ -349,6 +349,29 @@ def test_surface_event_voices_share_the_main_note_polyphony_budget() -> None:
     assert small_engine.telemetry().last_error is None
 
 
+def test_sustained_surface_bow_telemetry_marks_and_releases_string() -> None:
+    instrument = LoomInstrument(seed=39)
+    engine = Engine(instrument, max_voices=8, initial_params=loom_registry().defaults())
+    engine.push(InstrumentEvent("bow_on", (55, 0.7, 4)))
+    engine.render(256)
+    assert engine.telemetry().instrument["bow_strings"] == (4.0,)
+
+    engine.push(InstrumentEvent("bow_off", (4,)))
+    engine.render(256)
+    assert engine.telemetry().instrument["bow_strings"] == ()
+
+
+def test_sustained_bow_requires_a_valid_string_index() -> None:
+    instrument = LoomInstrument(seed=40)
+    engine = Engine(instrument, max_voices=8, initial_params=loom_registry().defaults())
+    engine.push(InstrumentEvent("bow_on", (55, 0.7)))
+    engine.push(InstrumentEvent("bow_on", (55, 0.7, 8)))
+    engine.render(256)
+    telemetry = engine.telemetry().instrument
+    assert telemetry["bow_strings"] == ()
+    assert telemetry["event_voices"] == 0
+
+
 def test_all_eight_factory_presets_render_finite_non_silent_stereo_audio() -> None:
     presets = load_factory_presets()
     assert {preset.id for preset in presets} >= {

@@ -56,6 +56,8 @@ class InstrumentSpec:
     footer: Callable[[Shell], str] | None = None
     header: Callable[[Shell], str] | None = None
     extras_changed: Callable[[Mapping[str, object], Shell], object] | None = None
+    event_router: Callable[[Event, Shell], Iterable[Event] | None] | None = None
+    help_rows: Callable[[Shell], Iterable[str]] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.identifier, str) or not re.fullmatch(r"[a-z][a-z0-9-]{0,31}", self.identifier):
@@ -105,6 +107,10 @@ class InstrumentSpec:
             raise ValueError("header must be callable or None")
         if self.extras_changed is not None and not callable(self.extras_changed):
             raise ValueError("extras_changed must be callable or None")
+        if self.event_router is not None and not callable(self.event_router):
+            raise ValueError("event_router must be callable or None")
+        if self.help_rows is not None and not callable(self.help_rows):
+            raise ValueError("help_rows must be callable or None")
 
 
 class _OverlayLayer(Widget):
@@ -236,7 +242,16 @@ class Shell:
 
     def _push(self, event: Event) -> bool:
         try:
-            result = bool(self.engine.push(event))
+            routed = self.spec.event_router(event, self) if self.spec.event_router is not None else (event,)
+            if routed is None:
+                events: tuple[Event, ...] = ()
+            else:
+                events = tuple(routed)
+            result = True
+            for routed_event in events:
+                if not self.engine.push(routed_event):
+                    result = False
+                    break
         except Exception as error:
             self.status_message = f"Event rejected: {error}"
             result = False
@@ -491,7 +506,7 @@ class Shell:
 
     def _overlay_rows(self) -> tuple[str, ...]:
         if self.overlay == "help":
-            return (
+            rows = (
                 "F1 help   F2-F5 instrument screens   F6 / Shift+F6 skin",
                 "F7 MIDI picker   F8 preset library   F9 panic",
                 "Ctrl+L MIDI CC learn   Ctrl+P command palette",
@@ -503,6 +518,9 @@ class Shell:
                 "Preset library: Enter load, S save-as, R rename, D delete user preset",
                 f"Current instrument screen: {self.current_screen.upper()} (F2-F5 are instrument-defined)",
             )
+            if self.spec.help_rows is None:
+                return rows
+            return (*rows, *(str(row) for row in self.spec.help_rows(self)))
         if self.overlay == "palette":
             commands = self._filtered_commands()
             return tuple(("> " if index == self.overlay_index else "  ") + label for index, (_, label, _) in enumerate(commands)) or ("No matching commands",)

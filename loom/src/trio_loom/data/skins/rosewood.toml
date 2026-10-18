@@ -1,0 +1,62 @@
+schema = "md-editor-theme/1.1"
+id = "rosewood"
+name = "ROSEWOOD"
+instrument = "loom"
+fps = 24
+
+[palette]
+bg = "#17100e"
+fg = "#ead6b0"
+muted = "#9b8065"
+wood = "#8f4f30"
+amber = "#d28c42"
+gold = "#f0be62"
+cream = "#fff0d0"
+dark = "#090705"
+jade = "#769b7c"
+coral = "#d76b53"
+
+[styles]
+background = { fg = "fg", bg = "bg" }
+text = { fg = "fg", bg = "bg" }
+muted = { fg = "muted", bg = "bg" }
+border = { fg = "wood", bg = "bg" }
+title = { fg = "gold", bg = "bg", bold = true }
+heading = { fg = "amber", bg = "bg", bold = true }
+accent = { fg = "cream", bg = "bg", bold = true }
+status = { fg = "jade", bg = "bg" }
+warning = { fg = "gold", bg = "bg", bold = true }
+error = { fg = "coral", bg = "bg", bold = true }
+focused = { fg = "dark", bg = "gold", bold = true }
+hover = { fg = "cream", bg = "#49301e" }
+pressed = { fg = "dark", bg = "amber", bold = true }
+selected = { fg = "cream", bg = "#604024", bold = true }
+disabled = { fg = "muted", bg = "bg" }
+key_white = { fg = "dark", bg = "#f1dfc2" }
+key_black = { fg = "gold", bg = "#39251a" }
+key_pressed = { fg = "dark", bg = "gold", bold = true }
+meter_low = { fg = "wood", bg = "bg" }
+meter_mid = { fg = "amber", bg = "bg" }
+meter_high = { fg = "gold", bg = "bg", bold = true }
+string_0 = { fg = "#5d3828", bg = "bg" }
+string_1 = { fg = "wood", bg = "bg" }
+string_2 = { fg = "amber", bg = "bg" }
+string_3 = { fg = "gold", bg = "bg" }
+string_4 = { fg = "cream", bg = "bg", bold = true }
+
+[glyphs]
+density = [" ", ".", ":", "-", "=", "+", "*", "#"]
+string = ["─", "·", "~", "≈", "∿"]
+frame = "round"
+
+[ramps]
+string = ["#5d3828", "#8f4f30", "#d28c42", "#f0be62", "#fff0d0"]
+
+[art]
+logo = "♬ R O S E W O O D ♬"
+loom = "wood · brass · ringing strings"
+
+[fallbacks.ascii.glyphs]
+density = [" ", ".", ":", "+", "#"]
+string = ["-", ".", ":", "=", "~"]
+frame = "ascii"

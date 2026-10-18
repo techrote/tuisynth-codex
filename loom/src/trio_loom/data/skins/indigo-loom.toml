@@ -1,0 +1,63 @@
+schema = "md-editor-theme/1.1"
+id = "indigo-loom"
+name = "INDIGO LOOM"
+instrument = "loom"
+fps = 24
+
+[palette]
+bg = "#111126"
+fg = "#ece8ff"
+muted = "#8d8bb0"
+indigo = "#7377d8"
+violet = "#aaa5ff"
+cream = "#f6e8c8"
+rust = "#d47953"
+teal = "#64c4bb"
+black = "#080816"
+white = "#fff9ef"
+red = "#ed6b79"
+
+[styles]
+background = { fg = "fg", bg = "bg" }
+text = { fg = "fg", bg = "bg" }
+muted = { fg = "muted", bg = "bg" }
+border = { fg = "indigo", bg = "bg" }
+title = { fg = "violet", bg = "bg", bold = true }
+heading = { fg = "cream", bg = "bg", bold = true }
+accent = { fg = "teal", bg = "bg", bold = true }
+status = { fg = "teal", bg = "bg" }
+warning = { fg = "cream", bg = "bg", bold = true }
+error = { fg = "red", bg = "bg", bold = true }
+focused = { fg = "black", bg = "violet", bold = true }
+hover = { fg = "cream", bg = "#302d56" }
+pressed = { fg = "black", bg = "rust", bold = true }
+selected = { fg = "white", bg = "#39386e", bold = true }
+disabled = { fg = "muted", bg = "bg" }
+key_white = { fg = "black", bg = "#eee9ff" }
+key_black = { fg = "violet", bg = "#202039" }
+key_pressed = { fg = "black", bg = "violet", bold = true }
+meter_low = { fg = "indigo", bg = "bg" }
+meter_mid = { fg = "teal", bg = "bg" }
+meter_high = { fg = "cream", bg = "bg", bold = true }
+string_0 = { fg = "#3d3b7a", bg = "bg" }
+string_1 = { fg = "indigo", bg = "bg" }
+string_2 = { fg = "violet", bg = "bg" }
+string_3 = { fg = "rust", bg = "bg" }
+string_4 = { fg = "cream", bg = "bg", bold = true }
+
+[glyphs]
+density = [" ", ".", ":", "-", "=", "+", "*", "#"]
+string = ["─", "·", "~", "≈", "∿"]
+frame = "round"
+
+[ramps]
+string = ["#3d3b7a", "#7377d8", "#aaa5ff", "#d47953", "#f6e8c8"]
+
+[art]
+logo = "♬ I N D I G O  L O O M ♬"
+loom = "woven indigo · rust thread · teal resonance"
+
+[fallbacks.ascii.glyphs]
+density = [" ", ".", ":", "+", "#"]
+string = ["-", ".", ":", "=", "~"]
+frame = "ascii"
