@@ -131,3 +131,12 @@ updated only with `--update-snapshots`.
 - The shared CLI offers offline WAV render, factory-asset selftest, listings, and deterministic
   plain-text snapshots. Those modes use no terminal or hardware devices. `trio-demo` provides a
   packaged sine instrument and factory presets for end-to-end qualification.
+- `InstrumentSpec` may name up to four F2-F5 screens, supply contextual header/footer hooks,
+  tune piano octave/height geometry, request a bounded animated refresh, and observe validated
+  extras changes. Screen names are accepted by `--snapshot --screen`; defaults for instruments
+  without these hooks remain unchanged. The shell tracks extras in preset dirty state and
+  save/restore flows.
+- `Widget.visible` removes screen-hidden controls from drawing, hit testing and keyboard focus
+  while preserving their instances and parameter values across screen changes.
+- The headless SGR driver supports captured left, middle and right drags plus the AURORA
+  painter's `Ctrl+R/E/O` keyboard twins.

@@ -60,6 +60,10 @@ def test_background_regeneration_is_debounced_swapped_at_boundaries_and_joined()
         assert telemetry["spectrum_centroid_hz"] > 0
         assert telemetry["spectrum_peak_hz"] > 0
         assert telemetry["voice_rms"] >= 0
+        assert telemetry["voice_envelope_sum"] > 0
+        assert 0 <= telemetry["voice_lfo_level"] <= 1
+        assert len(telemetry["table_magnitude"]) == 64
+        assert max(telemetry["table_magnitude"]) == pytest.approx(1.0)
     finally:
         engine.close()
     assert instrument._thread is None

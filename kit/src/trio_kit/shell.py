@@ -5,7 +5,8 @@ from __future__ import annotations
 import re
 import threading
 import time
-from collections.abc import Callable, Iterable
+from copy import deepcopy
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,15 @@ from trio_kit.preset import ExtraValidator, Preset, PresetError, PresetLibrary, 
 from trio_kit.skins import SkinLibrary
 from trio_kit.tui import Canvas, CanvasApp, FocusRing, PianoWidget, Rect
 from trio_kit.tui.widgets import ParamWidget, TextField, Widget
+
+
+def _copy_json_value(value: object) -> object:
+    """Thaw preset-style immutable mappings into detached mutable JSON values."""
+    if isinstance(value, Mapping):
+        return {key: _copy_json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_copy_json_value(item) for item in value]
+    return deepcopy(value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +47,15 @@ class InstrumentSpec:
     legato_glide: bool = False
     max_voices: int = 16
     extras_validator: ExtraValidator | None = None
+    screen_names: tuple[str, ...] = ()
+    piano_octaves: int = 2
+    piano_height: int = 7
+    compact_piano_height: int = 7
+    refresh_hz: int = 0
+    refresh_when: Callable[[Shell], bool] | None = None
+    footer: Callable[[Shell], str] | None = None
+    header: Callable[[Shell], str] | None = None
+    extras_changed: Callable[[Mapping[str, object], Shell], object] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.identifier, str) or not re.fullmatch(r"[a-z][a-z0-9-]{0,31}", self.identifier):
@@ -59,6 +78,33 @@ class InstrumentSpec:
             raise ValueError("max_voices must be a positive integer")
         if self.extras_validator is not None and not callable(self.extras_validator):
             raise ValueError("extras_validator must be callable or None")
+        if (
+            not isinstance(self.screen_names, tuple)
+            or len(self.screen_names) > 4
+            or any(not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9-]{0,31}", name) for name in self.screen_names)
+            or len(set(self.screen_names)) != len(self.screen_names)
+        ):
+            raise ValueError("screen_names must be a tuple of up to four unique lowercase ids")
+        if self.screen_names and self.on_screen is None:
+            raise ValueError("screen_names require an on_screen callback")
+        for field_name in ("piano_octaves",):
+            value = getattr(self, field_name)
+            if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 4:
+                raise ValueError(f"{field_name} must be an integer from 1 through 4")
+        for field_name in ("piano_height", "compact_piano_height"):
+            value = getattr(self, field_name)
+            if isinstance(value, bool) or not isinstance(value, int) or not 3 <= value <= 9:
+                raise ValueError(f"{field_name} must be an integer from 3 through 9")
+        if isinstance(self.refresh_hz, bool) or not isinstance(self.refresh_hz, int) or not 0 <= self.refresh_hz <= 30:
+            raise ValueError("refresh_hz must be an integer from 0 through 30")
+        if self.refresh_when is not None and not callable(self.refresh_when):
+            raise ValueError("refresh_when must be callable or None")
+        if self.footer is not None and not callable(self.footer):
+            raise ValueError("footer must be callable or None")
+        if self.header is not None and not callable(self.header):
+            raise ValueError("header must be callable or None")
+        if self.extras_changed is not None and not callable(self.extras_changed):
+            raise ValueError("extras_changed must be callable or None")
 
 
 class _OverlayLayer(Widget):
@@ -143,10 +189,12 @@ class Shell:
         )
         self.keyboard = KeyboardPiano()
         self._known_params = dict(self.engine.param_snapshot)
+        self._known_extras = _copy_json_value(self.engine.get_extras())
         self._midi_sounding: dict[int, int] = {}
         self._history: list[tuple[str, int | float, int | float]] = []
         self._redo: list[tuple[str, int | float, int | float]] = []
         self._loaded_params = dict(self._known_params)
+        self._loaded_extras = _copy_json_value(self._known_extras)
         self.current_preset: Preset | None = None
         self.current_screen = "main"
         self.status_message: str | None = None
@@ -172,10 +220,11 @@ class Shell:
         self._worker_stop = threading.Event()
         self._worker: threading.Thread | None = None
         self._lock = threading.RLock()
+        self.snapshot_mode = False
 
     @property
     def modified(self) -> bool:
-        return self._known_params != self._loaded_params
+        return self._known_params != self._loaded_params or self._known_extras != self._loaded_extras
 
     @property
     def midi_status(self) -> str:
@@ -235,6 +284,23 @@ class Shell:
         self._sync_widgets()
         return True
 
+    def set_extras(self, extras: object) -> bool:
+        """Validate and apply instrument extras through its thread-safe engine hook."""
+        if not isinstance(extras, Mapping):
+            raise TypeError("instrument extras must be a mapping")
+        validated = self.spec.extras_validator(dict(extras)) if self.spec.extras_validator is not None else dict(extras)
+        frozen = _copy_json_value(validated)
+        if not isinstance(frozen, dict):
+            raise TypeError("validated instrument extras must be a mapping")
+        if frozen == self._known_extras:
+            return False
+        self.engine.set_extras(frozen)
+        self._known_extras = frozen
+        if self.spec.extras_changed is not None:
+            self.spec.extras_changed(frozen, self)
+        self.invalidate()
+        return True
+
     def undo(self) -> bool:
         if not self._history:
             return False
@@ -264,6 +330,12 @@ class Shell:
             raise PresetError("preset could not be queued for application")
         self._known_params = complete
         self._loaded_params = dict(complete)
+        self._known_extras = _copy_json_value(preset.extras)
+        if not isinstance(self._known_extras, dict):
+            raise TypeError("preset extras must be a mapping")
+        self._loaded_extras = _copy_json_value(self._known_extras)
+        if self.spec.extras_changed is not None:
+            self.spec.extras_changed(self._known_extras, self)
         self.engine_preset_name = preset.name
         self.current_preset = preset
         self._history.clear()
@@ -293,12 +365,13 @@ class Shell:
             self._slug(preset_id or label),
             label,
             self._known_params,
-            self.engine.get_extras(),
+            self._known_extras,
         )
         self.presets.save(preset, overwrite=overwrite)
         self.current_preset = preset
         self.engine_preset_name = preset.name
         self._loaded_params = dict(self._known_params)
+        self._loaded_extras = _copy_json_value(self._known_extras)
         return preset
 
     def rename_preset(self, preset_id: str, name: str) -> Preset:
@@ -339,13 +412,18 @@ class Shell:
         usable_layout = width >= 80 and height >= 24
         if usable_layout and self.spec.widgets is not None:
             entries.extend(self.spec.widgets(self, width, height))
-        piano_y = max(4, height - 10)
-        piano_height = min(7, height - piano_y - 3)
-        if usable_layout and width >= 44 and piano_height >= 3:
+        compact = width < 100 or height < 30
+        target_piano_height = self.spec.compact_piano_height if compact else self.spec.piano_height
+        piano_height = min(target_piano_height, max(3, height - 7))
+        piano_y = max(4, height - piano_height - 3)
+        piano_octaves = min(self.spec.piano_octaves, max(1, (width - 4) // 21))
+        if usable_layout and width >= 25 + 4 and piano_height >= 3:
             self.piano = PianoWidget(
                 "piano",
-                Rect(2, piano_y, 42, piano_height),
+                Rect(2, piano_y, piano_octaves * 21, piano_height),
                 self._on_piano_event,
+                octaves=piano_octaves,
+                black_height=max(1, piano_height // 2),
                 legato_glide=self.spec.legato_glide,
             )
             self.piano._set_octave(previous_octave)
@@ -374,7 +452,11 @@ class Shell:
             self.spec.draw(canvas, self)
         telemetry = self.engine.telemetry()
         preset = self.engine_preset_name + ("*" if self.modified else "")
-        header = f"{self.spec.name} | {preset} | skin {self.skins.current_id} | {self.midi_status}"
+        header = (
+            str(self.spec.header(self))
+            if self.spec.header is not None
+            else f"{self.spec.name} | {preset} | skin {self.skins.current_id} | {self.midi_status}"
+        )
         canvas.text(2, 1, header, "title", max_width=canvas.width - 4)
         metrics = (
             f"voices {telemetry.active_voices}/{telemetry.max_voices}  CPU {telemetry.render_load * 100:.1f}%  "
@@ -393,6 +475,8 @@ class Shell:
             canvas.text(2, canvas.height - 3, self.status_message, "warning", max_width=canvas.width - 4)
 
     def _footer(self) -> str:
+        if self.spec.footer is not None and self.overlay is None:
+            return str(self.spec.footer(self))[: max(0, 96)]
         if self.overlay == "presets":
             return "Enter load  S save  R rename  D delete  Esc close"
         if self.overlay == "skins":
@@ -753,6 +837,7 @@ class Shell:
         return self.app
 
     def _tick(self) -> None:
+        next_refresh = time.monotonic()
         while not self._worker_stop.wait(0.02):
             now = time.monotonic()
             for event in self.keyboard.tick(now):
@@ -760,6 +845,11 @@ class Shell:
             self._refresh_sounding()
             if self.piano.tick(now):
                 self.invalidate()
+            if self.spec.refresh_hz:
+                if next_refresh <= now:
+                    next_refresh = now + 1.0 / self.spec.refresh_hz
+                    if self.spec.refresh_when is None or self.spec.refresh_when(self):
+                        self.invalidate()
 
     def run(self) -> None:
         if self._closed:
@@ -780,14 +870,24 @@ class Shell:
             self.shutdown()
 
     def snapshot(self, width: int = 100, height: int = 30, *, screen: str = "main") -> str:
-        if screen not in {"main", "help", "palette", "skins", "midi", "presets"}:
+        overlays = {"main", "help", "palette", "skins", "midi", "presets"}
+        if screen not in overlays and screen not in self.spec.screen_names:
             raise ValueError("unknown snapshot screen")
-        if screen != "main":
+        if screen in self.spec.screen_names:
+            key = f"f{self.spec.screen_names.index(screen) + 2}"
+            self.current_screen = key
+            if self.spec.on_screen is not None:
+                self.spec.on_screen(key, self)
+        elif screen != "main":
             self.open_overlay(screen)
         from trio_kit.tui.testing import HeadlessApp
 
-        with HeadlessApp(size=(width, height), app=self.build_app()) as driver:
-            return driver.screen_text()
+        self.snapshot_mode = True
+        try:
+            with HeadlessApp(size=(width, height), app=self.build_app()) as driver:
+                return driver.screen_text()
+        finally:
+            self.snapshot_mode = False
 
     def shutdown(self) -> None:
         """Release producers, stop audio, close MIDI, and leave terminal restoration to the app."""

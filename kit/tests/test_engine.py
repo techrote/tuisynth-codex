@@ -185,9 +185,19 @@ def test_engine_telemetry_is_small_immutable_and_instrument_close_is_idempotent(
         callback_errors=0,
         backend="offline",
         last_error=None,
-        instrument={f"key{index}": index for index in range(50)},
+        instrument={
+            "spectrum": tuple(index / 63 for index in range(64)),
+            "oversized_vector": tuple(range(65)),
+            "invalid_vector": (1.0, float("nan")),
+            "huge_vector": (1.0, 10**10000),
+            **{f"key{index}": index for index in range(50)},
+        },
     )
     assert len(oversized.instrument) == 16
+    assert oversized.instrument["spectrum"] == tuple(index / 63 for index in range(64))
+    assert "oversized_vector" not in oversized.instrument
+    assert "invalid_vector" not in oversized.instrument
+    assert "huge_vector" not in oversized.instrument
 
     engine.close()
     engine.close()

@@ -16,4 +16,4 @@ aurora = "trio_aurora.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-trio_aurora = ["py.typed", "data/presets/*.json", "data/skins/*.txt"]
+trio_aurora = ["py.typed", "data/presets/*.json", "data/skins/*.txt", "data/skins/*.toml"]

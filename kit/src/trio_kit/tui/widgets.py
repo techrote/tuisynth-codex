@@ -27,12 +27,15 @@ class Widget:
         self.bounds = bounds
         self.label = label
         self.focusable = bool(focusable)
+        self.visible = True
 
     @property
     def id(self) -> str:
         return self.tag
 
     def draw(self, canvas: Canvas, *, focused: bool = False, hovered: bool = False) -> None:
+        if not self.visible:
+            return
         canvas.hit(self.bounds.x, self.bounds.y, self.bounds.width, self.bounds.height, self.tag, self)
 
     def handle_key(self, key: str, data: str = "") -> bool:
@@ -716,7 +719,7 @@ class FocusRing:
 
     @property
     def focusables(self) -> tuple[Widget, ...]:
-        return tuple(widget for widget in self.widgets if widget.focusable)
+        return tuple(widget for widget in self.widgets if widget.focusable and widget.visible)
 
     @property
     def focused(self) -> Widget | None:
@@ -769,6 +772,8 @@ class FocusRing:
     def handle_mouse(self, tag: str, event: MouseInput) -> bool:
         for widget in self.widgets:
             if widget.tag == tag:
+                if not widget.visible:
+                    return False
                 if widget.focusable:
                     self.focus(tag)
                 return widget.handle_mouse(event)
@@ -777,4 +782,5 @@ class FocusRing:
     def draw(self, canvas: Canvas, *, hovered_tag: str | None = None) -> None:
         focused = self.focused_tag
         for widget in self.widgets:
-            widget.draw(canvas, focused=widget.tag == focused, hovered=widget.tag == hovered_tag)
+            if widget.visible:
+                widget.draw(canvas, focused=widget.tag == focused, hovered=widget.tag == hovered_tag)

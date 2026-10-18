@@ -80,8 +80,23 @@ def _make_parser(command: str, version: str) -> argparse.ArgumentParser:
     parser.add_argument("--seconds", type=float, default=4.0)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--snapshot", metavar="COLSxROWS")
-    parser.add_argument("--screen", default="main", choices=("main", "help", "palette", "skins", "midi", "presets"))
     return parser
+
+
+def _snapshot_screens(spec: InstrumentSpec) -> tuple[str, ...]:
+    return ("main", "help", "palette", "skins", "midi", "presets", *spec.screen_names)
+
+
+def _add_screen_argument(parser: argparse.ArgumentParser, spec: InstrumentSpec) -> None:
+    parser.add_argument("--screen", default="main", choices=_snapshot_screens(spec))
+
+
+def _print_snapshot(snapshot: str) -> None:
+    """Write a cell-aligned frame even when a Windows console lacks Unicode."""
+    encoding = getattr(sys.stdout, "encoding", None)
+    if encoding:
+        snapshot = snapshot.encode(encoding, errors="replace").decode(encoding)
+    print(snapshot)
 
 
 def _device_value(value: str | None) -> int | str | None:
@@ -242,6 +257,7 @@ def run_cli(
     """Run the common CLI for an instrument spec; never opens devices for offline commands."""
     program = command or spec.identifier
     parser = _make_parser(program, version)
+    _add_screen_argument(parser, spec)
     arguments = parser.parse_args(argv)
     try:
         if arguments.list_skins:
@@ -309,7 +325,7 @@ def run_cli(
             try:
                 if arguments.preset:
                     shell.load_preset(arguments.preset)
-                print(shell.snapshot(width, height, screen=arguments.screen))
+                _print_snapshot(shell.snapshot(width, height, screen=arguments.screen))
             finally:
                 shell.shutdown()
             return 0

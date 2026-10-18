@@ -128,6 +128,19 @@ Full layout, 100x30 (compact layout drops the waterfall to 3 rows and harmonics 
   `Ctrl+R` randomise smoothly, `Ctrl+E` even-only, `Ctrl+O` odd-only.
 - Screens: **PLAY** (as above), **SHAPE** (all spectral + envelope params, large painter),
   **SPACE** (motion + FX), **LIBRARY** (presets and skins with live preview).
+- The four tabs are F2 PLAY, F3 SHAPE, F4 SPACE and F5 LIBRARY. Their lowercase names are
+  accepted by the shared `--snapshot --screen` flow. AURORA uses a four-octave, 84-cell piano
+  in the full layout and a three-octave piano in the compact layout.
+- LIBRARY arrow or mouse selection immediately previews the chosen preset sound and skin;
+  Enter loads/applies the current selection, while F8 opens the full preset save/rename/delete
+  actions.
+- The scrolling waterfall uses a 64-band logarithmic magnitude summary retained with each
+  generated AURORA table. It scales that table spectrum by summed per-voice amp envelopes and
+  depth-weighted LFO telemetry, and clears when no voice produces sound. Frozen headless
+  snapshots use a deterministic, fixed-level view of the selected harmonic profile, so
+  PLAY/SHAPE goldens do not depend on wall-clock time or an audio device.
+- Factory colourways are packaged in `data/skins/`: `borealis`, `solar-wind` and `polar-night`;
+  the fourth option, `mono`, is the shared immutable ASCII-safe skin.
 - `--render` and `--selftest` must not start the regeneration worker thread in a way that
   leaves threads running at exit.
 
@@ -145,3 +158,6 @@ Full layout, 100x30 (compact layout drops the waterfall to 3 rows and harmonics 
 - Every factory preset renders 2 s of a C major chord finite, non-silent, below the ceiling.
 - UI (headless): painter drag sets expected bar heights; keyboard twin equivalence;
   golden snapshot of PLAY at 100x30 and compact at 80x24 for every factory skin.
+- AURORA UI qualification also captures PLAY and SHAPE at both required dimensions for all
+  three factory colourways and `mono`; it checks tab dispatch, full-width piano note lifecycle,
+  warning-free skin loading, deterministic frozen waterfall output, and worker shutdown.

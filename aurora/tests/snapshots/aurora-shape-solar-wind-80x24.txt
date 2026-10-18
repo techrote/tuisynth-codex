@@ -1,0 +1,24 @@
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ ☼ A U R O R A ☼ | Init | solar-wind | MIDI: stopped                          │
+│ voices 0/8  CPU 0.0%  limiter 1.00  octave +0  velocity 0.70  latch off      │
+│ PLAY               [SHAPE]            SPACE              LIBRARY             │
+│ SHAPE · draw a spectrum, then tune its partials and both envelopes           │
+│ HARMONICS · 32 bars · drag paint / right-drag erase                          │
+│ @ *  +                                                                       │
+│ | *  + =  = =  - - -  - -  - : :  : :  : :  : : :  : :  : : :  : :  : :  : : │
+│ 1   8   16   24   32   40   48   56   64                                     │
+│ Partials: < 32 >         Band     -------|--- 60c BWscale  ------|------ 1   │
+│ Stretch  ------|------ 1 Tilt     ------|----- -3 Noise    |------------ 0   │
+│ Phase    |------------ 1 A.attack -------|-- 1.8s A.decay  ------|--- 1.5s   │
+│ A.sust   --------|-- 0.8 A.rel    --------|--- 4s Velocity ----|------ 0.4   │
+│ Filter mode: < lp >      Cutoff   -------|-- 5.0k Reson    -|--------- 0.1   │
+│ F.env    ------|---- 0.2 Keytrk   ---|------- 0.3 F.attack -------|-- 2.5s   │
+│ F.decay  --------|--- 2s F.sust   -----|----- 0.5 F.rel    ---------|-- 5s   │
+│                                                                              │
+│                                                                              │
+│ ┌─██─██─┐┌─██─██─██─┐┌─██─██─┐┌─██─██─██─┐┌─██─██─┐┌─██─██─██─┐              │
+│ C3│D3│E3│F3│G3│A3│B3│C4│D4│E4│F4│G4│A4│B4│C5│D5│E5│F5│G5│A5│B5│              │
+│ └─┘└─┘└─┘└─┘└─┘└─┘└─┘└─┘└─┘└─┘└─┘└─┘└─┘└─┘└─┘└─┘└─┘└─┘└─┘└─┘└─┘              │
+│                                                                              │
+│ SHAPE · ↑/↓ .05 · PgUp/Dn .25 · Del · ^R random · ^E/O even/odd · ^Q         │
+└──────────────────────────────────────────────────────────────────────────────┘

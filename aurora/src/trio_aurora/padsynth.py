@@ -37,6 +37,7 @@ class PadsynthZone:
     frequency: float
     left: np.ndarray
     right: np.ndarray
+    spectral_profile: tuple[float, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,7 +98,7 @@ def generate_zone(
     if not np.any(magnitude > 0.0):
         silence = np.zeros(TABLE_SIZE, dtype=np.float32)
         silence.flags.writeable = False
-        return PadsynthZone(base_note, fundamental, silence, silence)
+        return PadsynthZone(base_note, fundamental, silence, silence, (0.0,) * 64)
 
     seed = int(params["spec.seed"])
     left_phase = np.random.default_rng(seed * 2).uniform(0.0, _PHASE_TAU, size=bin_count)
@@ -121,7 +122,25 @@ def generate_zone(
         right = np.zeros(TABLE_SIZE, dtype=np.float32)
     left.flags.writeable = False
     right.flags.writeable = False
-    return PadsynthZone(base_note, fundamental, left, right)
+    return PadsynthZone(base_note, fundamental, left, right, _compressed_spectrum(magnitude))
+
+
+def _compressed_spectrum(magnitude: np.ndarray, bands: int = 64) -> tuple[float, ...]:
+    """Keep a small logarithmic magnitude profile beside each generated table."""
+    edges = np.geomspace(1.0, float(len(magnitude)), bands + 1).astype(np.int64)
+    edges[0] = 1
+    edges[-1] = len(magnitude)
+    values = np.zeros(bands, dtype=np.float64)
+    for index in range(bands):
+        start = int(edges[index])
+        stop = max(start + 1, int(edges[index + 1]))
+        band = magnitude[start:stop]
+        if band.size:
+            values[index] = float(np.sqrt(np.mean(np.square(band))))
+    peak = float(np.max(values, initial=0.0))
+    if peak > 0.0:
+        values /= peak
+    return tuple(float(value) for value in values)
 
 
 def _paint_magnitude(

@@ -43,3 +43,23 @@ def test_shared_cli_lists_factory_presets_and_renders_without_devices(tmp_path) 
         assert rendered.getframerate() == 48_000
         assert rendered.getnframes() == 4_800
         assert any(rendered.readframes(rendered.getnframes()))
+
+
+def test_cli_lists_aurora_skins_and_named_instrument_snapshot(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        assert run_cli(aurora_spec(), argv=["--list-skins", "--data-dir", str(tmp_path)], command="aurora") == 0
+    assert set(output.getvalue().splitlines()) == {"mono", "borealis", "polar-night", "solar-wind"}
+
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        assert run_cli(
+            aurora_spec(),
+            argv=["--snapshot", "80x24", "--screen", "shape", "--skin", "borealis", "--data-dir", str(tmp_path)],
+            command="aurora",
+        ) == 0
+    frame = output.getvalue().rstrip("\n")
+    assert len(frame.splitlines()) == 24
+    assert all(len(line) == 80 for line in frame.splitlines())
+    assert "[SHAPE]" in frame and "HARMONICS" in frame

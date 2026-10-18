@@ -87,6 +87,9 @@ def test_seven_zone_generation_is_bounded_and_cache_holds_only_two_sets() -> Non
     assert len(table_set.zones) == 7
     assert all(zone.left.shape == zone.right.shape == (TABLE_SIZE,) for zone in table_set.zones)
     assert all(not zone.left.flags.writeable and not zone.right.flags.writeable for zone in table_set.zones)
+    assert all(len(zone.spectral_profile) == 64 for zone in table_set.zones)
+    assert all(np.isfinite(zone.spectral_profile).all() for zone in table_set.zones)
+    assert all(max(zone.spectral_profile, default=0.0) == pytest.approx(1.0) for zone in table_set.zones)
     assert elapsed < 10.0
 
     cache = TableSetCache()

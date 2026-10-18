@@ -1,0 +1,62 @@
+schema = "md-editor-theme/1.1"
+id = "polar-night"
+name = "POLAR NIGHT"
+instrument = "aurora"
+fps = 24
+
+[palette]
+bg = "#070d1b"
+fg = "#e4f0ff"
+muted = "#7486a7"
+blue = "#264b83"
+ice = "#76bde8"
+frost = "#c4edff"
+silver = "#c7d3e7"
+violet = "#9a8bd4"
+gold = "#f6d58c"
+coral = "#ff7b83"
+white = "#ffffff"
+black = "#02040a"
+
+[styles]
+background = { fg = "fg", bg = "bg" }
+text = { fg = "fg", bg = "bg" }
+muted = { fg = "muted", bg = "bg" }
+border = { fg = "blue", bg = "bg" }
+title = { fg = "frost", bg = "bg", bold = true }
+heading = { fg = "ice", bg = "bg", bold = true }
+accent = { fg = "violet", bg = "bg", bold = true }
+status = { fg = "frost", bg = "bg" }
+warning = { fg = "gold", bg = "bg", bold = true }
+error = { fg = "coral", bg = "bg", bold = true }
+focused = { fg = "black", bg = "frost", bold = true }
+hover = { fg = "frost", bg = "#172742" }
+pressed = { fg = "black", bg = "ice", bold = true }
+selected = { fg = "white", bg = "#243959", bold = true }
+disabled = { fg = "muted", bg = "bg" }
+key_white = { fg = "fg", bg = "#e6efff" }
+key_black = { fg = "silver", bg = "#111a2a" }
+key_pressed = { fg = "black", bg = "frost", bold = true }
+meter_low = { fg = "blue", bg = "bg" }
+meter_mid = { fg = "ice", bg = "bg" }
+meter_high = { fg = "violet", bg = "bg", bold = true }
+aurora_0 = { fg = "#264b83", bg = "bg" }
+aurora_1 = { fg = "#76bde8", bg = "bg" }
+aurora_2 = { fg = "#c4edff", bg = "bg" }
+aurora_3 = { fg = "#c7d3e7", bg = "bg" }
+aurora_4 = { fg = "#9a8bd4", bg = "bg", bold = true }
+
+[glyphs]
+density = [" ", ".", ":", "-", "=", "+", "*", "#", "%", "@"]
+idle = "."
+frame = "double"
+
+[ramps]
+aurora = ["#070d1b", "#264b83", "#76bde8", "#c4edff", "#9a8bd4"]
+
+[art]
+logo = "✧ A U R O R A ✧"
+sky = "·  ✧  ·  ✦  ·  ✧  ·"
+
+[fallbacks.ascii.glyphs]
+density = [" ", ".", ":", "+", "#"]
