@@ -140,3 +140,16 @@ updated only with `--update-snapshots`.
   while preserving their instances and parameter values across screen changes.
 - The headless SGR driver supports captured left, middle and right drags plus the AURORA
   painter's `Ctrl+R/E/O` keyboard twins.
+
+### Instrument event routing and contextual help
+
+- `InstrumentSpec.event_router`, when provided, receives each shared-shell event and may
+  return an ordered iterable of replacement events or `None` to consume it. The default is
+  unchanged pass-through. This hook is the shared boundary for note input from the on-screen
+  piano, computer keyboard, and MIDI, so an instrument can apply one consistent mode policy.
+  When it transforms note delivery, it must track note IDs and forward each matching release
+  for any note-on it already sent, even if the input mode changes while that note is held;
+  panic clears both the instrument and router's ownership state.
+- `InstrumentSpec.help_rows` may append instrument-specific key and mouse instructions to
+  the shared F1 help overlay. Neither callback gives widgets direct access to the audio engine;
+  widgets still use shell-level parameter and event routes.

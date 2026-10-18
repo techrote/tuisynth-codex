@@ -59,6 +59,7 @@ class _EventVoice:
     voice: LoomVoice
     string_index: int
     order: int
+    level: float = 0.0
     fade_total: int = 0
     fade_position: int = 0
 
@@ -80,6 +81,8 @@ class LoomInstrument:
         self._main_voice_count = 0
         self._main_voice_limit = 8
         self._event_voices: list[_EventVoice] = []
+        self._bow_voices: dict[int, _EventVoice] = {}
+        self._bow_strings: tuple[int, ...] = ()
         self._scheduled: list[_ScheduledVoice] = []
         self._held_pitches: tuple[float, ...] = ()
         self._voice_activity: dict[int, tuple[float, float]] = {}
@@ -143,6 +146,9 @@ class LoomInstrument:
         item.voice.release()
         item.fade_total = max(1, int(round(0.005 * self.sample_rate)))
         item.fade_position = 0
+        if self._bow_voices.get(item.string_index) is item:
+            self._bow_voices.pop(item.string_index, None)
+            self._bow_strings = tuple(sorted(self._bow_voices))
 
     def _trim_event_voices(self) -> None:
         active = sorted(
@@ -219,10 +225,10 @@ class LoomInstrument:
             if voice is None or voice.finished:
                 self._voice_activity.pop(identity, None)
 
-    def _new_event_voice(self, pitch: float, velocity: float, mode: str, string_index: int) -> None:
+    def _new_event_voice(self, pitch: float, velocity: float, mode: str, string_index: int) -> _EventVoice | None:
         limit = self._event_voice_budget()
         if limit <= 0:
-            return
+            return None
         active = [item for item in self._event_voices if item.fade_total == 0 and not item.voice._released]
         if len(active) >= limit:
             oldest = min(active, key=lambda item: item.order)
@@ -231,12 +237,14 @@ class LoomInstrument:
         self._event_counter += 1
         voice = self.create_voice(rng)
         voice.start_event(pitch, velocity, self._params, mode)
-        self._event_voices.append(_EventVoice(voice, string_index, self._event_counter))
+        item = _EventVoice(voice, string_index, self._event_counter)
+        self._event_voices.append(item)
         while len(self._event_voices) > max(1, self.voice_limit(self._params)) * 3:
             oldest_tail = next((item for item in self._event_voices if item.fade_total > 0), None)
             if oldest_tail is None:
                 break
             self._event_voices.remove(oldest_tail)
+        return item
 
     @staticmethod
     def _number(value: float | int | str, default: float) -> float:
@@ -250,12 +258,44 @@ class LoomInstrument:
         return result if math.isfinite(result) else default
 
     def on_event(self, name: str, payload: tuple[float | int | str, ...]) -> None:
-        """Handle `pluck`, `bow`, `mute`, and scheduled keyboard `strum` events.
+        """Handle string crossings, sustained bow gestures, and keyboard strums.
 
         `strum` payload is `(direction, rows_per_second, held_pitch...)`; direction
         accepts +1/`down` or -1/`up`. Individual string `pluck` and `bow` events take
-        `(pitch, velocity[, string_index])`; `mute` takes a string index.
+        `(pitch, velocity[, string_index])`; `mute` takes a string index. `bow_on`/`bow_off`
+        hold and release a bowed string; `bow` retains the continuous crossing behavior.
+        `held` replaces the keyboard chord snapshot, including when it is empty.
         """
+        if name == "held":
+            self._held_pitches = tuple(
+                pitch for value in payload[:12]
+                if 0 <= (pitch := self._number(value, -1.0)) <= 127
+            )
+            return
+        if name == "bow_off":
+            if payload:
+                index = int(self._number(payload[0], -1))
+                item = self._bow_voices.pop(index, None)
+                if item is not None:
+                    item.voice.release()
+                    self._bow_strings = tuple(sorted(self._bow_voices))
+            return
+        if name == "bow_on":
+            if len(payload) < 3:
+                return
+            pitch = self._number(payload[0], 60.0)
+            velocity = min(1.0, max(0.0, self._number(payload[1], 0.7)))
+            string_index = int(self._number(payload[2], -1)) if len(payload) > 2 else -1
+            if not 0 <= string_index < int(self._params["strum.strings"]):
+                return
+            previous = self._bow_voices.pop(string_index, None)
+            if previous is not None:
+                previous.voice.release()
+            item = self._new_event_voice(pitch, velocity, "bow", string_index)
+            if item is not None:
+                self._bow_voices[string_index] = item
+            self._bow_strings = tuple(sorted(self._bow_voices))
+            return
         if not payload:
             return
         if name in {"pluck", "bow"}:
@@ -280,6 +320,8 @@ class LoomInstrument:
             for item in self._event_voices:
                 if item.string_index == index:
                     self._fade_event_voice(item)
+            self._bow_voices.pop(index, None)
+            self._bow_strings = tuple(sorted(self._bow_voices))
             self._scheduled = [item for item in self._scheduled if item.string_index != index]
             return
         if name != "strum" or len(self._scheduled) > 52:
@@ -325,6 +367,7 @@ class LoomInstrument:
                 if count < frames:
                     buffer[count:] = 0.0
                 item.fade_position += count
+            item.level = float(np.sqrt(np.mean(np.square(buffer, dtype=np.float64)))) if frames else 0.0
             output += buffer
             if not item.voice.finished and (item.fade_total == 0 or item.fade_position < item.fade_total):
                 live.append(item)
@@ -393,10 +436,25 @@ class LoomInstrument:
 
     def telemetry(self) -> Mapping[str, object]:
         self._prune_voice_activity()
-        active = sorted(self._voice_activity.values(), key=lambda item: item[0])
+        mode = _choice(self._params, "play.mode", ("direct", "chord"))
+        pitches = self._strum.pitches(mode, self._held_pitches)
+        levels = [0.0] * len(pitches)
+        for pitch, level in self._voice_activity.values():
+            if pitches:
+                index = min(range(len(pitches)), key=lambda item: abs(pitches[item] - pitch))
+                levels[index] = max(levels[index], float(level))
+        for item in self._event_voices:
+            if 0 <= item.string_index < len(levels):
+                levels[item.string_index] = max(levels[item.string_index], item.level)
+        phase_turn = self._frame_clock / self.sample_rate * 0.7
+        phases = tuple((phase_turn + index * 0.137) % 1.0 for index in range(len(pitches)))
         return {
-            "string_pitches": tuple(item[0] for item in active[:16]),
-            "string_levels": tuple(item[1] for item in active[:16]),
+            "string_pitches": tuple(float(item) for item in pitches),
+            "string_levels": tuple(levels),
+            "string_phases": phases,
+            # The audio thread publishes this immutable snapshot when the map
+            # changes; UI telemetry never mutates audio-owned voice state.
+            "bow_strings": self._bow_strings,
             "sympathetic_pitches": self._sympathetic_pitches,
             "sympathetic_levels": tuple(float(level) for level in self._sympathetic_levels),
             "event_voices": sum(item.fade_total == 0 and not item.voice._released for item in self._event_voices),
@@ -408,6 +466,8 @@ class LoomInstrument:
 
     def reset(self) -> None:
         self._event_voices.clear()
+        self._bow_voices.clear()
+        self._bow_strings = ()
         self._scheduled.clear()
         self._voice_activity.clear()
         self._held_pitches = ()

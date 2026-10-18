@@ -84,14 +84,22 @@ A strum crossing string `i` triggers a pluck (or a bow stroke in bow mode) of st
 with velocity from crossing speed: `clamp(0.25 + rows_per_second / 40, 0.25, 1.0)`.
 `strum.spread` (0-80 ms) applies only to keyboard-triggered strums (`,` = down, `.` = up).
 
-For `InstrumentEvent`, LOOM accepts individual string crossings as `pluck` or `bow` with
-`(pitch, velocity[, string_index])`, `mute` with `(string_index)`, and keyboard `strum` with
-`(direction, rows_per_second, held_pitch...)`. Direction accepts `+1`/`down` for low-to-high
-and `-1`/`up` for high-to-low. Regular notes and bounded surface-event voices share the
-pluck/bow voice budget; the engine publishes note-voice counts so the surface does not exceed
-the active 8-pluck/4-bow limit. Replaced strings retain a 5 ms fade tail; `mute` applies the
-same 5 ms anti-click choke to the selected string and any matching live keyboard note. Each
-strum event replaces the held-pitch snapshot; an empty held-pitch list clears chord tuning.
+For `InstrumentEvent`, LOOM accepts individual string crossings as `pluck` or `bow`
+with `(pitch, velocity[, string_index])`, `bow_on` with `(pitch, velocity, string_index)`,
+`bow_off` with `(string_index)`, `mute` with `(string_index)`, `held` with zero to twelve held
+pitches, and keyboard `strum` with `(direction, rows_per_second, held_pitch...)`. The existing
+`bow` crossing remains continuous; a captured surface gesture uses `bow_on` for each newly
+crossed string and releases those voices with `bow_off` when capture ends. Direction is
++1/`down` for low-to-high and -1/`up` for high-to-low. Regular notes and bounded surface-event
+voices share the pluck/bow voice budget;
+the engine publishes note-voice counts so the surface does not exceed the active 8-pluck/4-bow
+limit. Replaced strings retain a 5 ms fade tail; `mute` applies the same 5 ms anti-click choke
+to the selected string and any matching live keyboard note. Each strum event replaces the
+held-pitch snapshot; an empty held-pitch list clears chord tuning. The shared shell forwards
+on-screen, computer-keyboard and MIDI notes through one optional instrument event router:
+LOOM's chord mode updates `held` without creating keyboard voices, while direct mode keeps
+the normal note events. The router tracks which note IDs started in direct mode so their
+matching note-offs still release voices if the play mode changes while a key is held.
 
 ### Parameters
 
@@ -156,11 +164,21 @@ Single instrument surface, 100x30:
   (e.g. `─ ~ ≈ ∿`). Large displacement may draw onto the adjacent blank row. Bowed strings
   show a bow marker `╫` at the bow point. Sympathetic resonators animate in their column.
 - **Strum**: left mouse down on the string area captures the mouse; crossing string rows
-  while moving plucks/bows them (see strum model). Right-click a string mutes it (choke).
-  Keyboard twin: focus the string area, `Up/Down` select string, `Enter` pluck selected,
-  `,`/`.` strum down/up.
-- `/` toggles `play.mode`; `F2`..`F4` move focus to strings / panel row / sympathetic column;
-  `F5` opens the library overlay.
+  while moving plucks/bows each crossed string in path order (see strum model). Crossing
+  speed determines velocity. In bow mode, capture release sends `bow_off` for each string
+  started during the gesture. Right-click a string mutes it (choke). Keyboard twin: focus the
+  string area, `Up/Down` select string, `Enter` pluck/bow the selection, `,`/`.` strum
+  down/up, and `/` toggles direct/chord play mode.
+- `F2`..`F4` focus strings / docked panels / sympathetic column; `F5` opens the shared preset
+  library overlay. The five parameter groups remain docked on one surface; the 80x24 layout
+  uses one compact control per group that cycles through its parameters with Left/Right and
+  adjusts values with Up/Down.
+- The surface exposes bounded per-string pitches, levels and slow phases, plus active bow
+  string indices. A standing-wave envelope maps displacement through the skin `string` glyph
+  ramp and `string_0`..`string_4` roles. Animation refreshes at no more than 24 fps and freezes
+  in headless snapshots. The sympathetic column renders all twelve pitches and levels.
+- Factory themes are packaged as `rosewood`, `brass` and `indigo-loom`. The fourth skin,
+  `mono`, is the immutable shared-kit fallback and includes ASCII-safe glyphs.
 
 ## Tests
 

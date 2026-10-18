@@ -1,0 +1,63 @@
+schema = "md-editor-theme/1.1"
+id = "brass"
+name = "BRASS"
+instrument = "loom"
+fps = 24
+
+[palette]
+bg = "#101114"
+fg = "#e9e3d4"
+muted = "#87837b"
+charcoal = "#101114"
+gold = "#e0b44e"
+copper = "#b87943"
+ivory = "#fff2d4"
+white = "#f4f1e8"
+black = "#09090a"
+teal = "#70a8a3"
+red = "#db765f"
+
+[styles]
+background = { fg = "fg", bg = "bg" }
+text = { fg = "fg", bg = "bg" }
+muted = { fg = "muted", bg = "bg" }
+border = { fg = "copper", bg = "bg" }
+title = { fg = "gold", bg = "bg", bold = true }
+heading = { fg = "ivory", bg = "bg", bold = true }
+accent = { fg = "teal", bg = "bg", bold = true }
+status = { fg = "teal", bg = "bg" }
+warning = { fg = "gold", bg = "bg", bold = true }
+error = { fg = "red", bg = "bg", bold = true }
+focused = { fg = "black", bg = "gold", bold = true }
+hover = { fg = "ivory", bg = "#38332a" }
+pressed = { fg = "black", bg = "copper", bold = true }
+selected = { fg = "white", bg = "#514025", bold = true }
+disabled = { fg = "muted", bg = "bg" }
+key_white = { fg = "black", bg = "#eee7d6" }
+key_black = { fg = "gold", bg = "#242326" }
+key_pressed = { fg = "black", bg = "gold", bold = true }
+meter_low = { fg = "copper", bg = "bg" }
+meter_mid = { fg = "gold", bg = "bg" }
+meter_high = { fg = "ivory", bg = "bg", bold = true }
+string_0 = { fg = "#54432b", bg = "bg" }
+string_1 = { fg = "copper", bg = "bg" }
+string_2 = { fg = "gold", bg = "bg" }
+string_3 = { fg = "ivory", bg = "bg" }
+string_4 = { fg = "teal", bg = "bg", bold = true }
+
+[glyphs]
+density = [" ", ".", ":", "-", "=", "+", "*", "#"]
+string = ["─", "·", "~", "≈", "∿"]
+frame = "double"
+
+[ramps]
+string = ["#54432b", "#b87943", "#e0b44e", "#fff2d4", "#70a8a3"]
+
+[art]
+logo = "♬ B R A S S ♬"
+loom = "concert hall · copper · gold thread"
+
+[fallbacks.ascii.glyphs]
+density = [" ", ".", ":", "+", "#"]
+string = ["-", ".", ":", "=", "~"]
+frame = "ascii"

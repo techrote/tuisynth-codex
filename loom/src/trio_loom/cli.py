@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
-import argparse
+from collections.abc import Sequence
 
+from trio_kit.cli import run_cli
 from trio_loom import __version__
+from trio_loom.ui import loom_spec
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        prog="loom",
-        description="LOOM terminal synthesizer. Run without options to see available commands.",
-    )
-    parser.add_argument("--version", action="version", version=f"loom {__version__}")
-    parser.parse_args()
-    parser.print_help()
-    return 0
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run LOOM through the shared hardware-safe instrument CLI."""
+    return run_cli(loom_spec(), argv=argv, command="loom", version=__version__)
