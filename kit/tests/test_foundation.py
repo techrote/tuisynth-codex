@@ -84,6 +84,7 @@ def test_all_packages_declare_factory_asset_data() -> None:
             "data/skins/*.txt",
         ]
         if folder == "kit":
+            expected.insert(2, "data/presets/demo/*.json")
             expected.append("data/skins/*.toml")
         assert project["tool"]["setuptools"]["package-data"][import_name] == expected
 

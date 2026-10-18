@@ -1,0 +1,30 @@
++--------------------------------------------------------------------------------------------------+
+| TRIO DEMO | Init | skin mono | MIDI: stopped                                                     |
+| voices 0/16  CPU 0.0%  limiter 1.00  octave +0  velocity 0.70  latch off                         |
+|  Shared TRIO kit demonstration                                                                   |
+|                                                                                                  |
+|  A sine voice exercises notes, presets, telemetry and offline render.                            |
+|                                                                                                  |
+|  No instrument package imports another instrument package.                                       |
+|                                                                                                  |
+|                                                                                                  |
+|  Level             0.65   Release             350.00                                             |
+|                                                                                                  |
+|  --------------|-------   --------------|-----------                                             |
+|                                                                                                  |
+|                                                                                                  |
+|                                                                                                  |
+|                                                                                                  |
+|                                                                                                  |
+|                                                                                                  |
+|                                                                                                  |
+| +-##-##-++-##-##-##-++-##-##-++-##-##-##-+                                                       |
+| | ## ## || ## ## ## || ## ## || ## ## ## |                                                       |
+| | ## ## || ## ## ## || ## ## || ## ## ## |                                                       |
+| | || || || || || || || || || || || || || |                                                       |
+| | || || || || || || || || || || || || || |                                                       |
+| C3|D3|E3|F3|G3|A3|B3|C4|D4|E4|F4|G4|A4|B4|                                                       |
+| +-++-++-++-++-++-++-++-++-++-++-++-++-++-+                                                       |
+|                                                                                                  |
+| F1 help  F6 skin  F7 MIDI  F8 presets  F9 panic  Ctrl+P palette  Ctrl+Z/Y undo/redo  Ctrl+Q quit |
++--------------------------------------------------------------------------------------------------+

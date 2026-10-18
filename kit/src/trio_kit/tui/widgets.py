@@ -743,6 +743,10 @@ class FocusRing:
                 return True
         return False
 
+    def clear_focus(self) -> None:
+        """Clear keyboard focus without changing widget order."""
+        self._index = -1
+
     def move(self, direction: int = 1) -> bool:
         focusables = self.focusables
         if not focusables:

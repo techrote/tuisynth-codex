@@ -509,6 +509,11 @@ class PresetLibrary:
                 merged[preset_id] = preset
         return tuple(merged[preset_id] for preset_id in sorted(merged))
 
+    def list_factory_presets(self) -> tuple[Preset, ...]:
+        """Return the packaged presets only, without user overrides or user-data reads."""
+        factory = self._factory_presets()
+        return tuple(factory[preset_id] for preset_id in sorted(factory))
+
     def get(self, preset_id: str) -> Preset:
         preset_id = validate_preset_id(preset_id)
         for preset in self.list_presets():

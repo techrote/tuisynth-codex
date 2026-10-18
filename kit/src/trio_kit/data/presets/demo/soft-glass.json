@@ -1,0 +1,12 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "demo",
+  "id": "soft-glass",
+  "name": "Soft Glass",
+  "params": {
+    "amp.level": 0.42,
+    "env.release": 1200.0
+  },
+  "extras": {},
+  "tags": ["factory", "soft"]
+}

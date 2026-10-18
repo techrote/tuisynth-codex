@@ -66,8 +66,9 @@ JSON document, UTF-8, schema `trio-preset/1`:
 
 Immutable dataclasses: `NoteOn(note_id, pitch, velocity, source, frame=0)`,
 `NoteOff(note_id, frame=0)`, `Sustain(on)`, `PitchBend(semitones)`, `ModWheel(value)`,
-`ControlChange(cc, value)`, `ParamSet(key, value)`, `InstrumentEvent(name, payload, frame=0)`,
-`Panic()`, `Transport(...)` (stretch).
+`ControlChange(cc, value)`, `ParamSet(key, value)`, `PresetApply(params, extras)`,
+`RetargetNote(note_id, pitch, frame=0)`, `InstrumentEvent(name, payload, frame=0)`, `Panic()`,
+`Transport(...)` (stretch).
 
 - `pitch` is a float MIDI note number (0-127 after transposition); `velocity` is 0..1.
 - `note_id` is an `int` allocated by `NoteIds.next()` (monotonic, thread-safe). Producers keep
@@ -76,6 +77,11 @@ Immutable dataclasses: `NoteOn(note_id, pitch, velocity, source, frame=0)`,
   `note_id` started.
 - `frame` is an optional offset (0..BLOCK-1) inside the next block for sample-accurate timing
   (used by the sequencer). The engine splits a block at event frames.
+- `PresetApply` validates a complete parameter map and instrument extras when its event reaches
+  the next block boundary. It replaces the parameter snapshot atomically before that block's
+  voices render and calls `Instrument.set_extras()` at the same boundary.
+- `RetargetNote` calls `VoiceManager.retarget()` at its sample frame. It is used only for an
+  instrument that declares legato glide support; a voice without `retarget()` safely ignores it.
 - Events with out-of-range values are rejected at construction with `ValueError`.
 - The bounded queue evicts the oldest `ParamSet` before other non-release events. A critical
   `NoteOff` or sustain-off can evict another non-release event. If a queue contains only

@@ -365,6 +365,17 @@ class MidiInput:
             self._preferred_name = None
         self.poll()
 
+    def release_notes(self) -> tuple[Event, ...]:
+        """Release MIDI-owned notes and sustain while keeping the port open."""
+        with self._lock:
+            events = self.note_map.release_all()
+            if self._sustain_on:
+                events.append(Sustain(False))
+                self._sustain_on = False
+            for event in events:
+                self._emit(event)
+            return tuple(events)
+
     def close(self) -> None:
         with self._lock:
             if self._closed:

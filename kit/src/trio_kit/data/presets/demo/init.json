@@ -1,0 +1,12 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "demo",
+  "id": "init",
+  "name": "Init",
+  "params": {
+    "amp.level": 0.65,
+    "env.release": 350.0
+  },
+  "extras": {},
+  "tags": ["factory", "sine"]
+}

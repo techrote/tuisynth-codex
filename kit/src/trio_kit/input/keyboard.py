@@ -102,6 +102,14 @@ class KeyboardPiano:
     def gate_ms(self) -> int:
         return self._gate_ms
 
+    @staticmethod
+    def handles_key(key: str) -> bool:
+        """Return whether a key belongs to this piano's note or octave controls."""
+        if not isinstance(key, str):
+            return False
+        normalized = key.casefold()
+        return normalized in _KEY_OFFSETS or normalized in {"f9", "-", "=", "[", "]", "'"}
+
     def set_gate_ms(self, gate_ms: int) -> None:
         if isinstance(gate_ms, bool) or not isinstance(gate_ms, int) or not 150 <= gate_ms <= 2_000:
             raise ValueError("gate_ms must be an integer in the range 150..2000")
@@ -110,6 +118,10 @@ class KeyboardPiano:
     @property
     def active_note_ids(self) -> dict[str, int]:
         return {key: note.note_id for key, note in self._active.items()}
+
+    @property
+    def active_pitches(self) -> frozenset[int]:
+        return frozenset(note.pitch for note in self._active.values())
 
     def _release(self, key: str) -> NoteOff:
         active = self._active.pop(key)

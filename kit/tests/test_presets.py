@@ -236,6 +236,7 @@ def test_factory_and_user_presets_merge_in_stable_id_order(tmp_path: Path) -> No
 
     library.save(make_preset("custom"))
     assert [preset.id for preset in library.list_presets()] == ["alpha", "custom", "zeta"]
+    assert [preset.id for preset in library.list_factory_presets()] == ["alpha", "zeta"]
     assert library.get("custom").name == "Test Pad"
     library.delete("custom")
     assert [preset.id for preset in library.list_presets()] == ["alpha", "zeta"]

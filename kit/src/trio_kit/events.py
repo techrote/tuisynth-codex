@@ -5,8 +5,10 @@ from __future__ import annotations
 import math
 import threading
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import dataclass
 from numbers import Real
+from types import MappingProxyType
 from typing import TypeAlias
 
 from trio_kit.constants import BLOCK, MAX_EVENT_QUEUE
@@ -35,6 +37,42 @@ def _frame(value: object) -> int:
     if not 0 <= frame < BLOCK:
         raise ValueError(f"frame must be in the range 0..{BLOCK - 1}")
     return frame
+
+
+def _freeze_json_value(value: object, *, active: set[int] | None = None, depth: int = 0) -> object:
+    """Copy JSON-shaped event payloads into recursively immutable containers."""
+    if depth > 16:
+        raise ValueError("preset extras exceed 16 nested levels")
+    if value is None or isinstance(value, (str, bool)):
+        return value
+    if isinstance(value, Real):
+        _finite_number(value, "preset extra")
+        return value
+    seen = set() if active is None else active
+    if isinstance(value, Mapping):
+        identity = id(value)
+        if identity in seen:
+            raise ValueError("preset extras cannot contain cycles")
+        seen.add(identity)
+        try:
+            copied: dict[str, object] = {}
+            for key, child in value.items():
+                if not isinstance(key, str):
+                    raise ValueError("preset extra object keys must be strings")
+                copied[key] = _freeze_json_value(child, active=seen, depth=depth + 1)
+            return MappingProxyType(copied)
+        finally:
+            seen.remove(identity)
+    if isinstance(value, (list, tuple)):
+        identity = id(value)
+        if identity in seen:
+            raise ValueError("preset extras cannot contain cycles")
+        seen.add(identity)
+        try:
+            return tuple(_freeze_json_value(child, active=seen, depth=depth + 1) for child in value)
+        finally:
+            seen.remove(identity)
+    raise ValueError("preset extras must contain JSON values")
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +165,47 @@ class ParamSet:
 
 
 @dataclass(frozen=True, slots=True)
+class PresetApply:
+    """Apply a complete parameter map and instrument extras at a block boundary."""
+
+    params: Mapping[str, int | float]
+    extras: Mapping[str, object]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.params, Mapping) or not isinstance(self.extras, Mapping):
+            raise ValueError("preset parameters and extras must be mappings")
+        params: dict[str, int | float] = {}
+        for key, value in self.params.items():
+            if not isinstance(key, str) or not key.strip():
+                raise ValueError("preset parameter keys must be non-empty strings")
+            _finite_number(value, f"parameter {key}")
+            params[key] = value
+        extras = _freeze_json_value(self.extras)
+        if not isinstance(extras, Mapping):
+            raise ValueError("preset extras must be an object")
+        object.__setattr__(self, "params", MappingProxyType(params))
+        object.__setattr__(self, "extras", MappingProxyType(extras))
+
+
+@dataclass(frozen=True, slots=True)
+class RetargetNote:
+    """Retarget one held note for an instrument with legato glide support."""
+
+    note_id: int
+    pitch: float
+    frame: int = 0
+
+    def __post_init__(self) -> None:
+        note_id = _integer(self.note_id, "note_id")
+        if note_id <= 0:
+            raise ValueError("note_id must be a positive integer")
+        pitch = _finite_number(self.pitch, "pitch")
+        if not 0.0 <= pitch <= 127.0:
+            raise ValueError("pitch must be in the range 0..127")
+        _frame(self.frame)
+
+
+@dataclass(frozen=True, slots=True)
 class InstrumentEvent:
     name: str
     payload: tuple[float | int | str, ...]
@@ -168,7 +247,7 @@ class Transport:
         _frame(self.frame)
 
 
-Event: TypeAlias = NoteOn | NoteOff | Sustain | PitchBend | ModWheel | ControlChange | ParamSet | InstrumentEvent | Panic | Transport
+Event: TypeAlias = NoteOn | NoteOff | Sustain | PitchBend | ModWheel | ControlChange | ParamSet | PresetApply | RetargetNote | InstrumentEvent | Panic | Transport
 
 
 def is_release_critical(event: Event) -> bool:
@@ -202,7 +281,7 @@ class EventQueue:
         return self._maxsize
 
     def push(self, event: Event) -> bool:
-        if not isinstance(event, (NoteOn, NoteOff, Sustain, PitchBend, ModWheel, ControlChange, ParamSet, InstrumentEvent, Panic, Transport)):
+        if not isinstance(event, (NoteOn, NoteOff, Sustain, PitchBend, ModWheel, ControlChange, ParamSet, PresetApply, RetargetNote, InstrumentEvent, Panic, Transport)):
             raise TypeError("event queue accepts only trio_kit event instances")
         with self._lock:
             if isinstance(event, Panic):
@@ -215,7 +294,10 @@ class EventQueue:
                 return True
 
             self._overflow_count += 1
-            parameter_index = next((index for index, queued in enumerate(self._events) if isinstance(queued, ParamSet)), None)
+            parameter_index = next(
+                (index for index, queued in enumerate(self._events) if isinstance(queued, (ParamSet, PresetApply))),
+                None,
+            )
             if parameter_index is not None:
                 del self._events[parameter_index]
                 self._dropped_events += 1

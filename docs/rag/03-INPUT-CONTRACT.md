@@ -51,6 +51,10 @@ Chromatic two-row tracker layout, base note C3 (MIDI 48) at octave offset 0:
   `selected`.
 - Keyboard twin: with the widget focused, `Left`/`Right` move a key cursor, `Enter` plays the
   cursor key (timed gate), `Up`/`Down` change octave.
+- The shared `PianoWidget` uses three cells per white key and two cells per black key; black
+  keys occupy the upper key area and their hit rectangles are registered after white-key hits.
+  A release outside the keyboard still ends the captured mouse note. Its keyboard twin gate is
+  ticked by the shell's small input timer.
 - Headless acceptance: tests inject real SGR mouse sequences (`ESC [ < b ; x ; y M` and `m`)
   through prompt_toolkit pipe input and assert the exact notes and velocities produced. This
   is the contract the recovered PadSynth failed (PAD-001).
@@ -80,6 +84,6 @@ Chromatic two-row tracker layout, base note C3 (MIDI 48) at octave offset 0:
 - **CC learn**: `CcLearnMap.arm(control_id)` arms the next incoming `ControlChange`; `feed`,
   `lookup`, and `clear` support the controller binding flow. Bindings use schema
   `trio-midi-map/1` in `midi-map.json` under per-instrument user data, written atomically. Corrupt
-  maps warn and load empty. Shell `Ctrl+L`, `--midi`, and MIDI picker UI are integrated with the
-  later shell issue; this issue supplies the pure and backend APIs only.
+  maps warn and load empty. Shell `Ctrl+L`, `--midi`, the MIDI picker, and shell-ordered shutdown
+  are integrated by TRIO-008.
 - Fake backend `FakeMidiPort` for tests and CI; no test opens a real MIDI port.

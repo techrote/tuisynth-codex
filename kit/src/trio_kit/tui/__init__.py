@@ -3,6 +3,7 @@
 from trio_kit.tui.app import CanvasApp, UIEvent
 from trio_kit.tui.canvas import Canvas, Cell, HitMap, HitRegion, Rect
 from trio_kit.tui.mouse import MouseInput, MouseRouter
+from trio_kit.tui.piano import PianoWidget
 from trio_kit.tui.widgets import (
     Button,
     Choice,
@@ -35,6 +36,7 @@ __all__ = [
     "MouseInput",
     "MouseRouter",
     "ParamWidget",
+    "PianoWidget",
     "Rect",
     "Tabs",
     "TextField",
