@@ -15,7 +15,7 @@ while notes come from the keyboards or MIDI.
 
 ## DSP (TRIO-013)
 
-### Sources (per engine, regenerated when source params change)
+### Sources (per engine, regenerated when source colour changes)
 
 Two-second looped buffers at the engine sample rate, generated with seeded NumPy:
 
@@ -26,6 +26,8 @@ Two-second looped buffers at the engine sample rate, generated with seeded NumPy
 - **breath**: noise passed through a gentle 1.2 kHz band-pass, used to add breathiness.
 
 A grain reads `mix = (1 - src.tone) * noise + src.tone * tone + src.breath * breath`.
+When `src.color` changes, the complete seeded bank is regenerated at the next block boundary;
+the previous bank and replacement crossfade over 50 ms.
 
 ### Grain scheduler and renderer
 
@@ -35,10 +37,17 @@ A grain reads `mix = (1 - src.tone) * noise + src.tone * tone + src.breath * bre
 - Per block and per stream, the number of new grains is `Poisson(density * block_seconds)`
   from the stream's seeded Generator, where `density = gr.density * field_density * gust`.
   Each grain draws: start frame uniform in the block; duration `gr.size * (1 + gr.size_jit *
-  U(-0.5, 0.5))` (5-500 ms); source start `gr.pos + gr.pos_scatter * U(-0.5, 0.5)` (wrapping);
+  U(-0.5, 0.5))`, clamped to 5-500 ms; source start `gr.pos + gr.pos_scatter * U(-0.5, 0.5)` (wrapping);
   playback ratio `freq / 220 * 2**(gr.pitch_scatter * U(-1, 1) / 1200)` for the tone path
   (the noise path uses the same ratio, which only changes its colour); pan
   `0.5 + gr.spread * U(-0.5, 0.5)` (constant-power); amplitude = velocity x stream envelope.
+- The implemented field density is `0.25 + 3.75 * field.y`; a held gust ramps from 0 to 1
+  over 300 ms and multiplies density by `1 + held_gust`. Effective wind is
+  `min(1, wind.gust + 0.5 * held_gust)`; the seeded smooth-random value contributes the
+  additional density factor `1 + effective_wind * 0.8 * g(t)`. Per-stream arrivals are drawn
+  for the stream's active portion of the current 256-frame block, including notes started at a
+  sample-offset event.
+- `field.x` source movement is `(field.x - 0.5) * field.amount` added to `gr.pos`, with wrapping.
 - Windows (`gr.window`): `hann`, `tukey` (25 %), `expodec` (exponential decay with a 2 ms
   linear fade-in), `rexpodec` (mirror). Every window starts and ends at exactly zero.
 - Rendering: for each active grain compute its overlap with the current block, read the
@@ -77,6 +86,8 @@ preset values unless the user saves: `x` adds to the vowel (`x * 4` blended with
 `fmt.vowel` by `field.amount`) and moves `gr.pos`; `y` scales density from 0.25x (bottom,
 "calm") to 4x (top, "storm") and raises brightness. Holding the mouse button in the map
 applies a **gust** (density x2, `wind.gust` +0.5) with 300 ms attack/release.
+The registry exposes `field.x` (default 0) and `field.y` (default 0.5) as modulatable controls;
+factory presets omit them so the live map position stays independent of factory sound settings.
 
 ### Parameters
 

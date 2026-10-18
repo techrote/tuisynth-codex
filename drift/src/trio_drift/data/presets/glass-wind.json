@@ -1,0 +1,19 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "drift",
+  "id": "glass-wind",
+  "name": "Glass Wind",
+  "params": {
+    "src.color": 0.62, "src.tone": 0.72, "src.breath": 0.08,
+    "gr.density": 44, "gr.size": 145, "gr.size_jit": 0.2,
+    "gr.pos": 0.28, "gr.pos_scatter": 0.24, "gr.spread": 0.86,
+    "gr.pitch_scatter": 165, "fmt.vowel": 2.7, "fmt.shift": 1.3,
+    "fmt.q": 2.65, "fmt.mix": 0.7, "field.amount": 0.6,
+    "wind.gust": 0.48, "wind.howl": 0.2,
+    "wind.rate": 0.42, "fx.reverb.size": 1.25, "fx.reverb.mix": 0.34,
+    "fx.delay.feedback": 0.48, "fx.delay.mix": 0.24, "master.level": 0.64
+  },
+  "extras": {},
+  "tags": ["glass", "bright"],
+  "description": "Bright pitched fragments and fine air scatter across a cold glass surface."
+}

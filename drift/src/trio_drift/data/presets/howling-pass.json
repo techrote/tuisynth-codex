@@ -1,0 +1,18 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "drift",
+  "id": "howling-pass",
+  "name": "Howling Pass",
+  "params": {
+    "src.color": 0.35, "src.tone": 0.18, "src.breath": 0.62,
+    "gr.density": 78, "gr.size": 230, "gr.size_jit": 0.42,
+    "gr.pos_scatter": 0.58, "gr.pitch_scatter": 75, "fmt.vowel": 3.5,
+    "fmt.shift": 1.36, "fmt.q": 2.2, "fmt.mix": 0.83,
+    "field.amount": 0.92, "wind.gust": 1.0,
+    "wind.howl": 0.95, "wind.rate": 0.16, "fx.reverb.size": 1.48,
+    "fx.reverb.mix": 0.3, "master.drive": 0.08, "master.level": 0.58
+  },
+  "extras": {},
+  "tags": ["howl", "wind"],
+  "description": "A narrow whistling howl wrapped in high moving air and long grains."
+}

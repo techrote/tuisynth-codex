@@ -1,0 +1,18 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "drift",
+  "id": "whisper-field",
+  "name": "Whisper Field",
+  "params": {
+    "src.color": -0.6, "src.tone": 0.14, "src.breath": 0.72,
+    "gr.density": 12, "gr.size": 360, "gr.size_jit": 0.12,
+    "gr.pos_scatter": 0.22, "gr.spread": 0.44, "fmt.vowel": 1.8,
+    "fmt.shift": 0.86, "fmt.q": 1.7, "fmt.mix": 0.52,
+    "field.amount": 0.55, "wind.gust": 0.16,
+    "wind.howl": 0.02, "wind.rate": 0.04, "amp.a": 1.5, "amp.r": 4,
+    "fx.reverb.size": 1.4, "fx.reverb.mix": 0.42, "master.level": 0.7
+  },
+  "extras": {},
+  "tags": ["quiet", "field"],
+  "description": "Slow, widely spaced whispers floating in a calm and open landscape."
+}
