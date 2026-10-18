@@ -22,7 +22,9 @@ from trio_kit.events import (
     NoteOn,
     Panic,
     ParamSet,
+    PresetApply,
     PitchBend,
+    RetargetNote,
     Sustain,
     Transport,
 )
@@ -161,6 +163,7 @@ class Engine:
         started = time.perf_counter()
         events = self.event_queue.drain()
         changes: dict[str, object] = {}
+        preset_extras: Mapping[str, object] | None = None
         dispatch: list[Event] = []
         for event in events:
             if isinstance(event, ParamSet):
@@ -168,8 +171,19 @@ class Engine:
                     changes[event.key] = self.registry.validate_value(event.key, event.value)
                 except ParamError as error:
                     self._last_error = str(error)[:256]
+            elif isinstance(event, PresetApply):
+                try:
+                    changes = self.registry.validate(event.params)
+                    preset_extras = event.extras
+                except ParamError as error:
+                    self._last_error = str(error)[:256]
             else:
                 dispatch.append(event)
+        if preset_extras is not None:
+            try:
+                self.set_extras(_thaw_preset_value(preset_extras))
+            except Exception as error:
+                self._last_error = f"preset extras: {error}"[:256]
         try:
             snapshot = self._param_state.apply(changes) if changes else self._param_state.snapshot
         except ParamError as error:
@@ -220,6 +234,9 @@ class Engine:
             return
         if isinstance(event, NoteOff):
             self.voice_manager.note_off(event)
+            return
+        if isinstance(event, RetargetNote):
+            self.voice_manager.retarget(event.note_id, event.pitch)
             return
         if isinstance(event, Sustain):
             self.voice_manager.set_sustain(event.on)
@@ -314,6 +331,15 @@ class Engine:
 
 class OfflineEngine(Engine):
     """Engine alias used for deterministic rendering without a device backend."""
+
+
+def _thaw_preset_value(value: object) -> object:
+    """Convert an immutable queued preset payload back to fresh JSON containers."""
+    if isinstance(value, Mapping):
+        return {key: _thaw_preset_value(child) for key, child in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_preset_value(child) for child in value]
+    return value
 
 
 __all__ = ["Engine", "EngineTelemetry", "OfflineEngine"]

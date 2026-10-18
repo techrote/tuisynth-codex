@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from trio_kit.engine import Engine, EngineTelemetry, MasterBus, OfflineEngine
-from trio_kit.events import EventQueue, InstrumentEvent, NoteOff, NoteOn, ParamSet
+from trio_kit.events import EventQueue, InstrumentEvent, NoteOff, NoteOn, ParamSet, PresetApply, RetargetNote
 from trio_kit.params import ParamRegistry, ParamSpec
 
 from engine_fakes import FakeInstrument
@@ -88,6 +88,28 @@ def test_parameter_changes_are_published_only_at_internal_block_boundaries() -> 
     engine.render(1)
     assert engine.param_snapshot.version == 1
     assert instrument.render_params[-1] == (1, 0.25)
+
+
+def test_preset_extras_and_legato_retarget_apply_at_the_next_block_boundary() -> None:
+    instrument = FakeInstrument()
+    engine = Engine(instrument, registry=gain_registry())
+    engine.push(NoteOn(1, 60, 0.8, "onscreen"))
+    engine.render(1)
+    voice = instrument.created[0]
+
+    engine.push(PresetApply({"amp.gain": 0.25}, {"character": ["soft"]}))
+    engine.render(255)
+    assert engine.param_snapshot.version == 0
+    assert instrument.extras == {}
+    engine.render(1)
+    assert engine.param_snapshot["amp.gain"] == 0.25
+    assert instrument.extras == {"character": ["soft"]}
+
+    engine.push(RetargetNote(1, 64))
+    engine.render(255)
+    assert voice.pitch == 60
+    engine.render(1)
+    assert voice.pitch == 64
 
 
 def test_invalid_queued_parameter_is_reported_and_does_not_break_audio() -> None:

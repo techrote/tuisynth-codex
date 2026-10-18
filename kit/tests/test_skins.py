@@ -312,6 +312,19 @@ def test_library_factory_method_uses_instrument_user_data_and_invalid_files_warn
     assert not any("reserved" in warning for warning in library.warnings)
 
 
+def test_factory_only_skin_library_does_not_read_user_data(tmp_path: Path) -> None:
+    factory = tmp_path / "factory"
+    user_skins = tmp_path / "aurora" / "skins"
+    write_skin(factory, skin_id="factory-only", accent="#abcdef")
+    write_skin(user_skins, skin_id="user-only", accent="#fedcba")
+
+    library = SkinLibrary.for_instrument("aurora", data_dir=tmp_path, factory_dir=factory, include_user=False, environ={})
+
+    assert library.user_dir is None
+    assert "factory-only" in library.ids
+    assert "user-only" not in library.ids
+
+
 def test_skin_and_style_models_are_immutable_and_validate_public_values() -> None:
     skin = mono_skin()
     with pytest.raises(TypeError):

@@ -15,7 +15,7 @@ from typing import Sequence
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = ("kit", "aurora", "loom", "drift")
 IMPORTS = {
-    "kit": ("trio-kit", "trio_kit", None),
+    "kit": ("trio-kit", "trio_kit", "trio-demo"),
     "aurora": ("trio-aurora", "trio_aurora", "aurora"),
     "loom": ("trio-loom", "trio_loom", "loom"),
     "drift": ("trio-drift", "trio_drift", "drift"),
@@ -126,9 +126,13 @@ def check_wheels(packages: Sequence[str]) -> None:
             )
             if package == "kit":
                 check_script += (
-                    "; from trio_kit.tui import Canvas, CanvasApp, FocusRing; "
+                    "; from trio_kit.tui import Canvas, CanvasApp, FocusRing, PianoWidget; "
                     "from trio_kit.tui.testing import HeadlessApp; "
-                    "assert Canvas and CanvasApp and FocusRing and HeadlessApp"
+                    "from trio_kit.shell import InstrumentSpec, Shell; "
+                    "from trio_kit.cli import run_cli; "
+                    "from trio_kit.demo import demo_spec; "
+                    "assert Canvas and CanvasApp and FocusRing and PianoWidget and HeadlessApp; "
+                    "assert InstrumentSpec and Shell and run_cli and demo_spec"
                 )
             run_process(
                 [str(python), "-c", check_script],

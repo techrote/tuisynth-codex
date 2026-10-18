@@ -18,8 +18,11 @@ dependencies = [
 audio = ["sounddevice>=0.5,<1"]
 midi = ["mido>=1.3,<2", "python-rtmidi>=1.5,<2"]
 
+[project.scripts]
+trio-demo = "trio_kit.demo:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-trio_kit = ["py.typed", "data/presets/*.json", "data/skins/*.txt", "data/skins/*.toml"]
+trio_kit = ["py.typed", "data/presets/*.json", "data/presets/demo/*.json", "data/skins/*.txt", "data/skins/*.toml"]

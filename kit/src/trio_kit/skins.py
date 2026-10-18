@@ -689,9 +689,10 @@ class SkinLibrary:
         mono: bool = False,
         no_color: bool | None = None,
         environ: Mapping[str, str] | None = None,
+        include_user: bool = True,
     ) -> SkinLibrary:
         """Create a library using the selected instrument's standard user-data directory."""
-        user_dir = get_user_data_dir(instrument, data_dir) / "skins"
+        user_dir = get_user_data_dir(instrument, data_dir) / "skins" if include_user else None
         return cls(
             instrument,
             factory_dir=factory_dir,
@@ -700,6 +701,7 @@ class SkinLibrary:
             mono=mono,
             no_color=no_color,
             environ=environ,
+            include_user=include_user,
         )
 
     def __init__(
@@ -712,6 +714,7 @@ class SkinLibrary:
         mono: bool = False,
         no_color: bool | None = None,
         environ: Mapping[str, str] | None = None,
+        include_user: bool = True,
     ) -> None:
         if instrument is not None and (
             not isinstance(instrument, str)
@@ -722,18 +725,19 @@ class SkinLibrary:
             raise ValueError("mono must be a boolean")
         if no_color is not None and not isinstance(no_color, bool):
             raise ValueError("no_color must be a boolean or None")
+        if not isinstance(include_user, bool):
+            raise ValueError("include_user must be a boolean")
         self.instrument = instrument
         self._warnings: list[str] = []
         self._skins: dict[str, Skin] = {"mono": mono_skin()}
         default_factory = Path(__file__).resolve().parent / "data" / "skins"
         self.factory_dir = Path(factory_dir).expanduser() if factory_dir is not None else default_factory
-        self.user_dir = (
-            Path(user_dir).expanduser()
-            if user_dir is not None
-            else get_user_data_dir(instrument, None) / "skins"
-            if instrument not in (None, "any")
-            else None
-        )
+        if user_dir is not None:
+            self.user_dir = Path(user_dir).expanduser()
+        elif include_user and instrument not in (None, "any"):
+            self.user_dir = get_user_data_dir(instrument, None) / "skins"
+        else:
+            self.user_dir = None
         self._load_directory(self.factory_dir, is_user=False)
         if self.user_dir is not None:
             self._load_directory(self.user_dir, is_user=True)

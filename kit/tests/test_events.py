@@ -14,7 +14,9 @@ from trio_kit.events import (
     NoteOn,
     Panic,
     ParamSet,
+    PresetApply,
     PitchBend,
+    RetargetNote,
     Sustain,
     Transport,
 )
@@ -52,6 +54,17 @@ def test_events_are_immutable_and_accept_valid_ranges() -> None:
     assert InstrumentEvent("pluck", (60, 0.5, "soft"), frame=64).payload[-1] == "soft"
     with pytest.raises(FrozenInstanceError):
         event.pitch = 61  # type: ignore[misc]
+
+
+def test_preset_apply_deep_freezes_json_extras_and_retarget_validates_note_range() -> None:
+    extras = {"voices": [{"wave": "sine"}]}
+    event = PresetApply({"amp.gain": 0.5}, extras)
+    extras["voices"][0]["wave"] = "saw"
+    assert event.extras["voices"][0]["wave"] == "sine"
+    with pytest.raises(TypeError):
+        event.extras["voices"][0]["wave"] = "triangle"  # type: ignore[index]
+    with pytest.raises(ValueError, match="0..127"):
+        RetargetNote(1, 128)
 
 
 def test_note_ids_are_monotonic_and_unique_across_threads() -> None:

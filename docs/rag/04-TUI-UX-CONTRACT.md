@@ -118,3 +118,15 @@ updated only with `--update-snapshots`.
 - `CanvasApp` caches clean frames and coalesces idle invalidations to at most 4 fps, or animated
   invalidations to at most 30 fps. Render failures are logged when possible, show an error panel,
   and leave global `Ctrl+Q` handling active.
+
+### TRIO-008 shell details
+
+- `InstrumentSpec` supplies identity, a factory, optional per-instrument drawing/widgets, and
+  packaged factory assets. `Shell` owns engine/backend/MIDI lifecycle, validated parameter
+  history, preset/skin libraries, command dispatch and overlays; it does not import instruments.
+- On-screen piano key hit regions match rendered white/black key cells. `RetargetNote` carries
+  optional legato glissando into voices, and `PresetApply` sends a full validated parameter map
+  plus extras to one engine block boundary.
+- The shared CLI offers offline WAV render, factory-asset selftest, listings, and deterministic
+  plain-text snapshots. Those modes use no terminal or hardware devices. `trio-demo` provides a
+  packaged sine instrument and factory presets for end-to-end qualification.
