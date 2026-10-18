@@ -29,7 +29,12 @@ Chromatic two-row tracker layout, base note C3 (MIDI 48) at octave offset 0:
 - Note keys are active whenever no text field has focus. The status line shows octave,
   velocity and latch state.
 - Implementation: a pure `KeyboardPiano` class with `press(key, now) -> events` and
-  `tick(now) -> events`, testable without a terminal.
+  `tick(now) -> events`, testable without a terminal. `now` is monotonic seconds; the active
+  pitch and note id are captured at the first press, so octave changes affect only new notes.
+- Auto-repeat extends the existing timed note's deadline without another NoteOn. While latch is
+  enabled, a first press creates an untimed note and another press toggles it off. Turning latch
+  off releases any notes created by latch mode. `release_all()` emits NoteOffs; F9 clears local
+  note tracking and emits a global `Panic`.
 
 ## On-screen keyboard widget (TRIO-008)
 
@@ -52,18 +57,29 @@ Chromatic two-row tracker layout, base note C3 (MIDI 48) at octave offset 0:
 
 ## USB MIDI (TRIO-005)
 
-- Optional dependency `python-rtmidi`, imported lazily. If missing or failing, the UI shows
-  `MIDI: unavailable` and everything else works.
-- Pure parser `parse_midi(message: bytes|list[int]) -> list[Event-like]`, tested with byte
+- Optional dependency `python-rtmidi`, imported lazily. If missing or failing, the input service
+  reports `MIDI: unavailable` and keyboard/offline operation remains available.
+- Pure parser `parse_midi(message: bytes|list[int]) -> list[MidiCommand]`, tested with byte
   sequences, handling: Note On (velocity 0 = Note Off), Note Off, CC 64 sustain (>= 64 on),
   CC 1 mod wheel (0..1), Pitch Bend (14-bit, +-2 semitones default, configurable 1-12),
   CC 120 and CC 123 -> `Panic`, Channel filter (omni default or 1-16), ignoring clock,
-  active sensing and SysEx without error. Malformed/short messages are ignored and counted.
+  active sensing and SysEx without error. Raw `ControlChange` values accompany semantic CC
+  events for learn/mapping. Note messages are channel-aware `MidiNoteOn`/`MidiNoteOff`
+  commands until `MidiNoteMap` assigns engine note ids; other commands are engine events.
+  Malformed/short messages are ignored and counted by `MidiParser`.
 - MIDI note numbers map to `note_id`s inside a `MidiNoteMap` so repeated Note On of the same
-  key without Note Off first releases the previous voice (standard MIDI behaviour).
-- Port selection: `--midi <index|substring>`, a MIDI picker in the app shell, and a
-  2-second background poll that reconnects when a named device returns.
-- **CC learn**: in the shell, `Ctrl+L` arms learn on the focused control; the next incoming
-  CC binds to it. Bindings are stored in `midi-map.json` in the user data directory
-  (atomic write) and can be cleared from the MIDI picker.
+  `(channel, note)` pair without Note Off first releases the previous voice (standard MIDI
+  behaviour). Keyboard and MIDI adapters share a process-wide default `NoteIds` allocator and
+  accept an injected allocator when an application needs an isolated engine scope.
+- `MidiInput` accepts a port index or name substring and can change selection through
+  `select_port()`. It polls every two seconds and reconnects to the same port name after it
+  returns. Disconnecting or changing ports releases only its tracked MIDI note ids and clears
+  sustain if that MIDI input had turned it on; this does not panic other note producers. Its
+  status reports the connected port or a readable unavailable reason. `FakeMidiBackend` exercises
+  delivery and reconnects without hardware.
+- **CC learn**: `CcLearnMap.arm(control_id)` arms the next incoming `ControlChange`; `feed`,
+  `lookup`, and `clear` support the controller binding flow. Bindings use schema
+  `trio-midi-map/1` in `midi-map.json` under per-instrument user data, written atomically. Corrupt
+  maps warn and load empty. Shell `Ctrl+L`, `--midi`, and MIDI picker UI are integrated with the
+  later shell issue; this issue supplies the pure and backend APIs only.
 - Fake backend `FakeMidiPort` for tests and CI; no test opens a real MIDI port.
