@@ -22,7 +22,11 @@ def test_factory_presets_are_distinct_documented_harmonic_profiles() -> None:
     presets = _preset_library(spec, None).list_factory_presets()
     assert {preset.id for preset in presets} == EXPECTED_PRESETS
     assert all(preset.description for preset in presets)
-    profiles = [tuple(validate_extras(preset.extras)["harmonics"]) for preset in presets]
+    assert all("sequencer" in preset.extras for preset in presets)
+    profiles = [
+        tuple(validate_extras({key: value for key, value in preset.extras.items() if key != "sequencer"})["harmonics"])
+        for preset in presets
+    ]
     assert len(set(profiles)) == len(EXPECTED_PRESETS)
 
 

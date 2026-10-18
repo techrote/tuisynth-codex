@@ -146,7 +146,15 @@ class CanvasApp:
                 key, data = "space", ""
             self.event_log.append(UIEvent("key", key=key))
             self.input_count += 1
-            handled = self.widgets.handle_key(key, data)
+            # Space is the sequencer transport key for the shared synth shell,
+            # never a note or generic widget activation. Let the shell own it
+            # before focused widgets see it.
+            handled = False
+            if key == "space" and self.on_key_callback is not None:
+                result = self.on_key_callback(key, data)
+                handled = result is not False
+            if not handled:
+                handled = self.widgets.handle_key(key, data)
             if not handled and self.on_key_callback is not None:
                 result = self.on_key_callback(key, data)
                 handled = result is not False
@@ -163,6 +171,7 @@ class CanvasApp:
             value = value[5:]
         lowered = value.lower()
         aliases = {
+            " ": "space",
             "s-tab": "s-tab",
             "shift-tab": "s-tab",
             "pageup": "pageup",
@@ -173,6 +182,7 @@ class CanvasApp:
             "backspace": "backspace",
             "delete": "delete",
             "space": "space",
+            "f15": "s-f3",
             "any": "any",
             "controlq": "c-q",
             "controlp": "c-p",

@@ -71,7 +71,7 @@ Immutable dataclasses: `NoteOn(note_id, pitch, velocity, source, frame=0)`,
 `NoteOff(note_id, frame=0)`, `Sustain(on)`, `PitchBend(semitones)`, `ModWheel(value)`,
 `ControlChange(cc, value)`, `ParamSet(key, value)`, `PresetApply(params, extras)`,
 `RetargetNote(note_id, pitch, frame=0)`, `InstrumentEvent(name, payload, frame=0)`, `Panic()`,
-`Transport(...)` (stretch).
+`Transport(tempo=120, swing=0, playing=False, frame=0)`.
 
 - `pitch` is a float MIDI note number (0-127 after transposition); `velocity` is 0..1.
 - `note_id` is an `int` allocated by `NoteIds.next()` (monotonic, thread-safe). Producers keep
@@ -83,6 +83,15 @@ Immutable dataclasses: `NoteOn(note_id, pitch, velocity, source, frame=0)`,
 - `PresetApply` validates a complete parameter map and instrument extras when its event reaches
   the next block boundary. It replaces the parameter snapshot atomically before that block's
   voices render and calls `Instrument.set_extras()` at the same boundary.
+- `extras.sequencer` is validated by shared preset plumbing and removed before private instrument
+  extras reach `Instrument.set_extras()`. `Engine.get_extras()` merges the instrument data with the
+  shared sequencer state so preset dirty tracking, save/load and the UI see one complete object.
+- `Transport` updates the sequencer scheduler at its sample frame. `SequencerProcessor` runs once
+  per internal block before voice dispatch, computes anchored step boundaries, adds generated
+  `NoteOn`/`NoteOff` events with block-relative frame offsets, and tracks each generated note ID
+  until release. Stop, tempo/swing change, pattern/config edits and panic release owned notes.
+  Arpeggiator mode captures routed held-note input and suppresses its direct voice events while
+  enabled; LOOM's held-pitch instrument event supports its chord-mode routing.
 - `RetargetNote` calls `VoiceManager.retarget()` at its sample frame. It is used only for an
   instrument that declares legato glide support; a voice without `retarget()` safely ignores it.
 - Events with out-of-range values are rejected at construction with `ValueError`.
@@ -139,7 +148,8 @@ Immutable dataclasses: `NoteOn(note_id, pitch, velocity, source, frame=0)`,
   random chunkings). It never returns uninitialised memory.
 - Per block: drain events (applying `ParamSet`s into a new `ParamSnapshot`), split at event
   frames, render voices and run the instrument bus for each segment, assemble the block, then
-  run the `MasterBus` once. Immediately after queued params and preset extras apply, the engine
+  run the `MasterBus` once. Sequencer-generated events join the same sample-offset dispatch path.
+  Immediately after queued params and preset extras apply, the engine
   calls an optional `instrument.on_block_boundary(snapshot)` exactly once before event dispatch
   or voice rendering. This is the safe point for an instrument to commit worker-produced state;
   `process_bus` remains segment-scoped. This keeps master limiter statistics aligned with blocks.

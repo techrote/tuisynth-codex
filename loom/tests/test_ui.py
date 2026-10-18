@@ -236,3 +236,50 @@ def test_golden_loom_snapshots(tmp_path, monkeypatch, skin: str, size: tuple[int
 def test_loom_screen_names_and_controls_are_instrument_specific() -> None:
     assert SCREEN_NAMES == ("strings", "panels", "sympathy", "library")
     assert set(SCREEN_NAMES).isdisjoint({"play", "shape", "space", "weather"})
+
+
+def test_shift_f3_sequencer_golden_snapshot_and_sgr_controls(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    shell = _shell(tmp_path / "sequencer", skin="rosewood")
+    try:
+        snapshot = shell.snapshot(80, 24, screen="sequencer")
+        assert "SEQ" in snapshot and shell.app is not None and shell.app.error is None
+        target = Path(__file__).parent / "snapshots" / "loom-sequencer-rosewood-80x24.txt"
+        if __import__("os").environ.get("TRIO_UPDATE_SNAPSHOTS") == "1":
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(snapshot + "\n", encoding="utf-8")
+        assert target.exists(), f"missing golden snapshot: {target.name}"
+        assert snapshot == target.read_text(encoding="utf-8").rstrip("\n")
+        shell.shutdown()
+        shell = _shell(tmp_path / "interaction", skin="rosewood")
+        with HeadlessApp(size=(80, 24), app=shell.build_app()) as driver:
+            driver.press("f2")
+            driver.press("s-f3")
+            grid = next(widget for widget in shell.widgets.widgets if widget.tag == "sequencer-thread")
+            driver.start()
+            driver.screen_text()
+            first = next(cell for cell in grid._cell_centres if cell[1] == 0)
+            second = next(cell for cell in grid._cell_centres if cell[1] == 1)
+            third = next(cell for cell in grid._cell_centres if cell[1] == 2)
+            driver.click(first[2], first[3])
+            driver.drag([(second[2], second[3]), (second[2], max(grid.bounds.y, second[3] - 1))])
+            driver.click(third[2], third[3], button="right")
+            driver.press("right")
+            driver.press("enter")
+            driver.press("pageup")
+            driver.press("space")
+            driver.send_keys("amorl")
+            settings = shell._known_extras["sequencer"]
+            lane = settings["pattern"]["lanes"][0]
+            assert lane[0]["on"] and lane[1]["on"] and lane[1]["velocity"] != 0.8
+            assert lane[2]["on"] and lane[2]["probability"] == 0.25 and lane[2]["velocity"] > 0.8
+            assert settings["playing"]
+            assert settings["arpeggiator"] == {"enabled": True, "mode": "down", "octaves": 2, "rate": "1/8T", "latch": True, "seed": 0}
+            assert shell.current_screen == "s-f3"
+            assert shell.app.error is None
+            driver.press("escape")
+            driver.screen_text()
+            assert shell.current_screen == "f2" and not grid.visible
+            assert shell.widgets.focused is not None and shell.widgets.focused.tag == "loom-strings"
+    finally:
+        shell.shutdown()

@@ -58,6 +58,10 @@ class HeadlessApp:
         "f1": "\x1bOP",
         "f2": "\x1bOQ",
         "f3": "\x1bOR",
+        # Legacy xterm F15 is the common Shift+F3 spelling; prompt_toolkit
+        # reserves CSI 1;2R for cursor-position responses.
+        "s-f3": "\x1b[28~",
+        "space": " ",
         "f4": "\x1bOS",
         "f5": "\x1b[15~",
         "f6": "\x1b[17~",

@@ -50,6 +50,19 @@ def test_shell_commands_parameter_undo_redo_preset_boundary_and_note_routing(tmp
         shell.shutdown()
 
 
+def test_space_is_transport_even_when_piano_has_focus(tmp_path) -> None:
+    shell = Shell(demo_spec(), no_audio=True, data_dir=tmp_path, start_midi=False)
+    try:
+        with HeadlessApp(size=(80, 24), app=shell.build_app()) as app:
+            app.start()
+            shell.widgets.focus("piano")
+            app.press("space")
+            assert shell._known_extras["sequencer"]["playing"]
+            assert not any(isinstance(event, NoteOn) for event in shell.engine.event_queue.drain())
+    finally:
+        shell.shutdown()
+
+
 def test_shell_shutdown_releases_notes_before_audio_and_closes_midi_after_audio(tmp_path) -> None:
     log: list[object] = []
     spec = demo_spec()
@@ -209,7 +222,10 @@ def test_instrument_spec_polyphony_seed_and_extras_validation_reach_shared_shell
     try:
         assert shell.engine.max_voices == 3
         assert shell.engine.seed == 314
-        assert shell.presets.extras_validator is validate
+        assert shell.presets.extras_validator is not validate
+        checked = shell.presets.extras_validator({"profile": "bright"})
+        assert checked["profile"] == "bright"
+        assert "sequencer" in checked
     finally:
         shell.shutdown()
 

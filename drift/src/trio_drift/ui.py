@@ -11,7 +11,7 @@ from weakref import WeakKeyDictionary
 from trio_kit.events import InstrumentEvent
 from trio_kit.params import ParamSpec
 from trio_kit.shell import InstrumentSpec, Shell
-from trio_kit.tui import Canvas, Rect
+from trio_kit.tui import Canvas, Rect, SequencerWidget
 from trio_kit.tui.mouse import MouseInput
 from trio_kit.tui.widgets import Widget
 
@@ -523,6 +523,7 @@ class _View:
         self.grain: ParameterDrawer | None = None
         self.air: ParameterDrawer | None = None
         self.library: LibraryHUD | None = None
+        self.sequencer: SequencerWidget | None = None
 
     def _close(self) -> None:
         self.screen = "map"
@@ -541,6 +542,8 @@ class _View:
             self.air.visible = self.screen == "air"
         if self.library is not None:
             self.library.visible = self.screen == "library"
+        if self.sequencer is not None:
+            self.sequencer.visible = self.screen == "sequencer"
 
     def widgets(self, width: int, height: int) -> tuple[Widget, ...]:
         compact = width < 100 or height < 30
@@ -560,15 +563,25 @@ class _View:
         library_height = min(11, map_bounds.height - 1)
         library_y = map_bounds.y + (map_bounds.height - library_height) // 2
         self.library = LibraryHUD(self.shell, Rect(panel_x, library_y, panel_width, library_height), self._close)
+        seq_y = map_bounds.y + 1
+        seq_height = max(4, min(8, map_bounds.height - 2))
+        self.sequencer = SequencerWidget(self.shell, Rect(panel_x, seq_y, panel_width, seq_height), "pressure")
         self._visibility()
-        return (self.weather, self.grain, self.air, self.library)
+        return (self.weather, self.grain, self.air, self.library, self.sequencer)
 
     def on_screen(self, key: str) -> None:
-        self.screen = {"f2": "map", "f3": "grain", "f4": "air", "f5": "library"}.get(key, "map")
+        if key == "seq-return":
+            previous = self.shell._screen_before_sequencer
+            target = previous if previous in {"f2", "f3", "f4", "f5"} else "f2"
+            self.shell.current_screen = target
+            self.on_screen(target)
+            return
+        self.screen = {"f2": "map", "f3": "grain", "f4": "air", "f5": "library", "s-f3": "sequencer", "shift-f3": "sequencer"}.get(key, "map")
         self._visibility()
         tag = {
             "map": "drift-weather-map", "grain": "drift-grain-drawer",
             "air": "drift-air-drawer", "library": "drift-library",
+            "sequencer": "sequencer-pressure",
         }[self.screen]
         self.shell.widgets.focus(tag)
         self.shell.invalidate()
@@ -617,7 +630,9 @@ class DriftUI:
             return "AIR click select/+ wheel adjust; arrows select/adjust; Del reset; Esc map"
         if screen == "library":
             return "LIB sounds/skins left/right switch up/dn select Enter apply Esc map F8 actions"
-        return "MAP drag/gust; right=centre; wheel=density; F2 map F3 grain F4 air F5 lib"
+        if screen == "sequencer":
+            return "SEQ arrows · Enter toggle · drag velocity · right-click chance · Space transport · A/M/O/R/L arp · Esc map"
+        return "MAP drag/gust; right=centre; wheel=density; F2 map F3 grain Shift+F3 seq F4 air F5 lib"
 
     def on_screen(self, key: str, shell: Shell) -> None:
         self.view(shell).on_screen(key)
@@ -631,7 +646,7 @@ class DriftUI:
             "DRIFT map: left-drag steers x/y and holds gust until release; right-click recentres",
             "Map keyboard twin: focus map; arrows move 2%, PageUp/Down move vertically 10%, Enter gust, Delete centre",
             "Mouse wheel changes grain density; particles show active grain pan, pitch, amplitude and age",
-            "F3 grain controls · F4 air controls · F5 preset and skin library · Escape returns to map",
+            "F3 grain controls · Shift+F3 sequencer ring · F4 air controls · F5 preset and skin library · Escape returns",
             "Grain/Air: click selects or increments; wheel adjusts; right-click resets the pointed control",
             "Drawer keys: Up/Down select; Left/Right adjust; PageUp/Down coarse; Home/End limits; Delete default",
             "F6 changes skin · F8 shared preset actions · F9 panic · Ctrl+Q quits",

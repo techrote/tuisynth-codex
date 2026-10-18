@@ -18,6 +18,7 @@ from trio_kit.engine.master import MasterBus
 from trio_kit.events import NoteIds, NoteOff, NoteOn, PresetApply
 from trio_kit.preset import Preset, PresetError, PresetLibrary
 from trio_kit.shell import InstrumentSpec, Shell
+from trio_kit.seq import validate_extras as validate_shared_extras
 from trio_kit.skins import SkinLibrary
 
 
@@ -53,7 +54,7 @@ def _preset_library(spec: InstrumentSpec, data_dir: str | None) -> PresetLibrary
         data_dir=data_dir,
         factory_package=spec.factory_package,
         factory_dir=spec.factory_presets_dir,
-        extras_validator=spec.extras_validator,
+        extras_validator=lambda extras: validate_shared_extras(extras, spec.extras_validator),
     )
 
 
@@ -84,7 +85,8 @@ def _make_parser(command: str, version: str) -> argparse.ArgumentParser:
 
 
 def _snapshot_screens(spec: InstrumentSpec) -> tuple[str, ...]:
-    return ("main", "help", "palette", "skins", "midi", "presets", *spec.screen_names)
+    extra = ("sequencer",) if spec.on_screen is not None else ()
+    return ("main", "help", "palette", "skins", "midi", "presets", *extra, *spec.screen_names)
 
 
 def _add_screen_argument(parser: argparse.ArgumentParser, spec: InstrumentSpec) -> None:
