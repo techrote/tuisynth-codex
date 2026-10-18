@@ -1,4 +1,5 @@
 from pathlib import Path
+from threading import Event, Thread
 
 import pytest
 
@@ -91,6 +92,78 @@ def test_real_pipe_keys_match_widget_keyboard_path(tmp_path: Path) -> None:
         assert fader.value == 51
         app.press("delete")
         assert fader.value == 50
+
+
+def test_headless_key_press_waits_for_handler_completion(tmp_path: Path) -> None:
+    callback_started = Event()
+    callback_release = Event()
+    press_returned = Event()
+    press_errors: list[BaseException] = []
+
+    def on_key(key: str, data: str) -> bool:
+        del data
+        if key == "delete":
+            callback_started.set()
+            if not callback_release.wait(2):
+                raise TimeoutError("test did not release the key callback")
+            return True
+        return False
+
+    app = CanvasApp(on_key=on_key)
+    with HeadlessApp(app=app, size=(20, 6), error_log=str(tmp_path / "errors.log")) as headless:
+        def send_key() -> None:
+            try:
+                headless.press("delete")
+            except BaseException as error:
+                press_errors.append(error)
+            finally:
+                press_returned.set()
+
+        sender = Thread(target=send_key, daemon=True)
+        sender.start()
+        try:
+            assert callback_started.wait(1)
+            assert not press_returned.wait(0.05), "headless press returned before its handler finished"
+        finally:
+            callback_release.set()
+            sender.join(timeout=1)
+        assert not sender.is_alive()
+        assert press_returned.is_set()
+        assert not press_errors
+
+
+def test_headless_quit_press_waits_for_callback_completion(tmp_path: Path) -> None:
+    callback_started = Event()
+    callback_release = Event()
+    press_returned = Event()
+    press_errors: list[BaseException] = []
+
+    def on_quit() -> None:
+        callback_started.set()
+        if not callback_release.wait(2):
+            raise TimeoutError("test did not release the quit callback")
+
+    app = CanvasApp(quit_callback=on_quit)
+    with HeadlessApp(app=app, size=(20, 6), error_log=str(tmp_path / "errors.log")) as headless:
+        def send_key() -> None:
+            try:
+                headless.press("c-q")
+            except BaseException as error:
+                press_errors.append(error)
+            finally:
+                press_returned.set()
+
+        sender = Thread(target=send_key, daemon=True)
+        sender.start()
+        try:
+            assert callback_started.wait(1)
+            assert not press_returned.wait(0.05), "headless quit returned before its callback finished"
+        finally:
+            callback_release.set()
+            sender.join(timeout=1)
+        assert not sender.is_alive()
+        assert press_returned.is_set()
+        assert not press_errors
 
 
 def test_resize_recreates_canvas_at_new_terminal_geometry(tmp_path: Path) -> None:

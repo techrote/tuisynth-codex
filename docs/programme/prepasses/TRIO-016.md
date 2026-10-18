@@ -99,12 +99,21 @@
   snapshot; a parameterized regression covers all three tail causes. The same review confirmed the
   earlier smoothing-history and rack-LFO continuity fixes. It reported no remaining actionable
   findings.
-- Final `tools/check.py --package all --packaging` passed 549 tests (kit 405, AURORA 41, LOOM 48,
+- Original PR #33 passed its four exact-head CI lanes and merged as `a3cb0b2`.
+  `tools/check.py --package all --packaging` had passed 549 tests (kit 405, AURORA 41, LOOM 48,
   DRIFT 55), built and clean-installed all four wheels on Windows, and passed installed
   metadata/import/CLI, preset/skin, DRIFT offline selftest and render checks. The standalone
   `tools/check_factory_render_baselines.py` verified all 24 factory WAV checksums against the
-  pre-change fixture; `git diff --check` passed. Exact-head hosted CI, PR review/merge and
-  post-merge main checks remain. Physical audio, MIDI and terminal acceptance remain unperformed.
+  pre-change fixture; `git diff --check` passed.
+- Post-merge main CI run `39114045879` exposed a stale-state race in the device-free headless
+  driver on Ubuntu/Python 3.11: its input counter advanced before the key handler had finished,
+  so the DRIFT gesture test could inspect the prior field value. The counter now advances only
+  after key and quit handlers complete. New barrier-based tests cover both paths. The full local
+  `tools/check.py --package all --packaging` after this repair passed 551 tests (kit 407, AURORA
+  41, LOOM 48, DRIFT 55), built and clean-installed all four wheels, and passed installed
+  metadata/import/CLI, preset/skin, DRIFT offline selftest and render checks. Repair PR exact-head
+  CI and post-repair main CI remain to be qualified. Physical audio, MIDI and terminal acceptance
+  remain unperformed.
 
 ## Provenance
 
