@@ -176,23 +176,29 @@ class StereoDelay:
 
 
 class Reverb:
-    """Eight-line Householder feedback delay network with per-line damping."""
+    """Eight-line Householder feedback delay network with adjustable damping."""
 
     _BASE_SECONDS = (0.0311, 0.03335, 0.0364, 0.0389, 0.04165, 0.0444, 0.04752, 0.0496)
 
-    def __init__(self, sample_rate: int = 48_000, *, size: float = 0.8, mix: float = 0.25) -> None:
+    def __init__(
+        self,
+        sample_rate: int = 48_000,
+        *,
+        size: float = 0.8,
+        damp: float = 0.4,
+        mix: float = 0.25,
+    ) -> None:
         self.sample_rate = positive_sample_rate(sample_rate)
         self._mix = finite_number(mix, "mix", minimum=0, maximum=1)
+        self._damp = -1.0
         max_delay = int(math.ceil(max(self._BASE_SECONDS) * 1.6 * self.sample_rate))
         self.delay_lines = [DelayLine(max_delay, channels=1) for _ in range(8)]
-        self._damping_alpha = math.exp(-2.0 * math.pi * 6_000.0 / self.sample_rate)
-        self._damping_b = np.asarray((1.0 - self._damping_alpha,), dtype=np.float64)
-        self._damping_a = np.asarray((1.0, -self._damping_alpha), dtype=np.float64)
         self._damping_zi = np.zeros((1, 8), dtype=np.float64)
         self._input_weights = np.full(8, 1.0 / math.sqrt(8.0), dtype=np.float64)
-        self._size = 0.8
+        self._size = -1.0
         self._delays: tuple[int, ...] = ()
         self._decay_gains = np.ones(8, dtype=np.float64)
+        self.set_damp(damp)
         self.set_size(size)
 
     @property
@@ -208,11 +214,28 @@ class Reverb:
         self._mix = finite_number(value, "mix", minimum=0, maximum=1)
 
     @property
+    def damp(self) -> float:
+        return self._damp
+
+    def set_damp(self, damp: float) -> None:
+        normalized = finite_number(damp, "damp", minimum=0, maximum=1)
+        if normalized == self._damp:
+            return
+        cutoff_hz = 18_000.0 * (1.0 - 0.95 * normalized) ** 2
+        alpha = math.exp(-2.0 * math.pi * cutoff_hz / self.sample_rate)
+        self._damp = normalized
+        self._damping_alpha = alpha
+        self._damping_b = np.asarray((1.0 - alpha,), dtype=np.float64)
+        self._damping_a = np.asarray((1.0, -alpha), dtype=np.float64)
+
+    @property
     def line_delays(self) -> tuple[int, ...]:
         return self._delays
 
     def set_size(self, size: float) -> None:
         normalized = finite_number(size, "size", minimum=0.2, maximum=1.6)
+        if normalized == self._size:
+            return
         delays = tuple(int(round(seconds * normalized * self.sample_rate)) for seconds in self._BASE_SECONDS)
         if any(delay <= BLOCK for delay in delays):
             raise ValueError("every reverb line delay must be longer than one internal block")
@@ -224,6 +247,27 @@ class Reverb:
         self._size = normalized
         self._delays = delays
         self._decay_gains = gains
+
+    def set_parameters(
+        self,
+        *,
+        size: float | None = None,
+        damp: float | None = None,
+        mix: float | None = None,
+    ) -> None:
+        normalized_size = None if size is None else finite_number(size, "size", minimum=0.2, maximum=1.6)
+        if normalized_size is not None:
+            delays = tuple(int(round(seconds * normalized_size * self.sample_rate)) for seconds in self._BASE_SECONDS)
+            if any(delay <= BLOCK for delay in delays):
+                raise ValueError("every reverb line delay must be longer than one internal block")
+        normalized_damp = None if damp is None else finite_number(damp, "damp", minimum=0, maximum=1)
+        normalized_mix = None if mix is None else finite_number(mix, "mix", minimum=0, maximum=1)
+        if normalized_size is not None:
+            self.set_size(normalized_size)
+        if normalized_damp is not None:
+            self.set_damp(normalized_damp)
+        if normalized_mix is not None:
+            self._mix = normalized_mix
 
     def process(self, buffer: object) -> np.ndarray:
         samples = _stereo(buffer)

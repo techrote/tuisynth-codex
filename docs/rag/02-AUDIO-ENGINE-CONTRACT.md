@@ -48,12 +48,15 @@ JSON document, UTF-8, schema `trio-preset/1`:
 
 ```json
 {"schema": "trio-preset/1", "synth": "aurora", "id": "glacier-choir", "name": "Glacier Choir",
- "params": {"amp.a": 2.5}, "extras": {"harmonics": [1.0, 0.5]}, "tags": ["pad"]}
+ "params": {"amp.a": 2.5}, "extras": {"harmonics": [1.0, 0.5]}, "tags": ["pad"],
+ "description": "A slow, wide choir with a cool upper shimmer."}
 ```
 
 - `synth` must equal the loading instrument's id; `id` matches `^[a-z0-9][a-z0-9-]{0,47}$`.
 - Missing params take defaults; unknown keys produce warnings; invalid values follow the
   validation rules above. `extras` is validated by an instrument-supplied validator.
+- Optional `description` is text of at most 512 characters and is preserved by the shared preset
+  library; omitted descriptions remain empty.
 - Structural errors (not an object, wrong types, oversize > 256 KiB, nesting > 16) return a
   `PresetError` with a message; they never raise `TypeError`/`AttributeError` to the UI.
 - `save_preset()` writes through a flushed temp file in the same directory. Overwrites use
@@ -123,7 +126,10 @@ Immutable dataclasses: `NoteOn(note_id, pitch, velocity, source, frame=0)`,
   random chunkings). It never returns uninitialised memory.
 - Per block: drain events (applying `ParamSet`s into a new `ParamSnapshot`), split at event
   frames, render voices and run the instrument bus for each segment, assemble the block, then
-  run the `MasterBus` once. This keeps master limiter statistics aligned with internal blocks.
+  run the `MasterBus` once. Immediately after queued params and preset extras apply, the engine
+  calls an optional `instrument.on_block_boundary(snapshot)` exactly once before event dispatch
+  or voice rendering. This is the safe point for an instrument to commit worker-produced state;
+  `process_bus` remains segment-scoped. This keeps master limiter statistics aligned with blocks.
 - `OfflineEngine` is the same engine with no device; used by tests and `--render`.
 - Randomness only through `numpy.random.Generator` instances seeded from `(seed, voice
   counter)`, so equal seeds and equal event streams give bit-identical float32 output on the
@@ -143,7 +149,7 @@ tested for continuity: processing one signal in random chunk sizes equals proces
 | `DelayLine` | Circular buffer, fractional (linear-interpolated) read. **Chronological**: after writing 0..7, a read of delay 4 returns 4,5,6,7 (MOD-004 regression test). Feedback delays require delay >= one block so a block is computed from past samples only. |
 | `Chorus` | Two modulated `DelayLine` taps (7-20 ms, LFO 0.1-6 Hz, opposite phases L/R), mix. |
 | `StereoDelay` | Ping-pong feedback delay 60 ms-2 s, feedback 0-0.9 with a low-pass in the loop, mix. |
-| `Reverb` | 8-line feedback delay network with a Householder matrix, all line lengths > `BLOCK` (so each block is computed from past samples), per-line one-pole damping via `lfilter`, size 0.2-1.6 scales lengths/decay, mix. Must decay to below -90 dBFS after input stops for size <= 1.6. |
+| `Reverb` | 8-line feedback delay network with a Householder matrix, all line lengths > `BLOCK` (so each block is computed from past samples), per-line one-pole damping via `lfilter`, size 0.2-1.6 scales lengths/decay, normalized damp 0-1 maps damping cutoff from 18 kHz to 45 Hz, mix. Must decay to below -90 dBFS after input stops for size <= 1.6. |
 
 All DSP `process` methods accept `0..BLOCK` frames and return float32 output; signal processors
 preserve their configured channel layout and the stereo effects are two-channel. `Adsr(sample_rate, attack, decay, sustain, release)`
@@ -159,8 +165,9 @@ channels=1)` exposes `write(buffer)`, `read(delay_samples, frames)`, and causal
 `process(buffer, delay_samples)`. Reads are chronological: writing 0..7 then reading delay 4
 for 4 frames yields 4..7; fractional delays interpolate adjacent samples. `Chorus` uses a
 13.5 ms center and 6.5 ms depth by default. `StereoDelay` accepts 0.06..2.0 seconds, feedback
-0..0.9 and a 6 kHz feedback low-pass. `Reverb` accepts size 0.2..1.6 and mix 0..1; its eight
-line delays scale with size and remain longer than one block at supported sample rates.
+0..0.9 and a 6 kHz feedback low-pass. `Reverb` accepts size 0.2..1.6, damp 0..1 and mix
+0..1; its eight line delays scale with size and remain longer than one block at supported sample
+rates.
 
 ## Master bus (TRIO-003)
 

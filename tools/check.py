@@ -134,6 +134,13 @@ def check_wheels(packages: Sequence[str]) -> None:
                     "assert Canvas and CanvasApp and FocusRing and PianoWidget and HeadlessApp; "
                     "assert InstrumentSpec and Shell and run_cli and demo_spec"
                 )
+            if package == "aurora":
+                check_script += (
+                    "; from trio_aurora import AuroraInstrument, aurora_spec, generate_table_set; "
+                    "from importlib.resources import files; "
+                    "assert AuroraInstrument and aurora_spec and generate_table_set; "
+                    "assert files('trio_aurora').joinpath('data/presets/glacier-choir.json').is_file()"
+                )
             run_process(
                 [str(python), "-c", check_script],
                 label=f"installed {distribution} metadata and import smoke check",
@@ -149,6 +156,20 @@ def check_wheels(packages: Sequence[str]) -> None:
                 expected = f"{command} 0.1.0"
                 if result.stdout.strip() != expected:
                     raise CheckFailed(f"{command} --version returned {result.stdout.strip()!r}; expected {expected!r}")
+                if package == "aurora":
+                    preset_result = run_process(
+                        [str(venv_script(environment, command)), "--list-presets"],
+                        label="installed aurora factory preset listing",
+                        cwd=workspace,
+                        capture=True,
+                    )
+                    required_presets = {
+                        "glacier-choir", "northern-veil", "cathedral-air", "solar-bloom",
+                        "ice-strings", "deep-ocean", "hollow-partials", "stretch-bells",
+                    }
+                    listed = {line.split("\t", maxsplit=1)[0] for line in preset_result.stdout.splitlines() if line}
+                    if not required_presets <= listed:
+                        raise CheckFailed(f"aurora preset listing omitted {sorted(required_presets - listed)}")
 
 
 def make_parser() -> argparse.ArgumentParser:

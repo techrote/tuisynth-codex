@@ -122,8 +122,9 @@ updated only with `--update-snapshots`.
 ### TRIO-008 shell details
 
 - `InstrumentSpec` supplies identity, a factory, optional per-instrument drawing/widgets, and
-  packaged factory assets. `Shell` owns engine/backend/MIDI lifecycle, validated parameter
-  history, preset/skin libraries, command dispatch and overlays; it does not import instruments.
+  packaged factory assets, polyphony, extras validation and a CLI-provided seed. `Shell` owns
+  engine/backend/MIDI lifecycle, validated parameter history, preset/skin libraries, command
+  dispatch and overlays; it does not import instruments.
 - On-screen piano key hit regions match rendered white/black key cells. `RetargetNote` carries
   optional legato glissando into voices, and `PresetApply` sends a full validated parameter map
   plus extras to one engine block boundary.

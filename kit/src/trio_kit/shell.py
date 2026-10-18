@@ -14,7 +14,7 @@ from trio_kit.engine import Engine, open_backend
 from trio_kit.events import ControlChange, Event, NoteOff, NoteOn, Panic, ParamSet, PresetApply
 from trio_kit.input import CcLearnMap, KeyboardPiano, MidiInput
 from trio_kit.params import ParamRegistry
-from trio_kit.preset import Preset, PresetError, PresetLibrary, validate_preset_id
+from trio_kit.preset import ExtraValidator, Preset, PresetError, PresetLibrary, validate_preset_id
 from trio_kit.skins import SkinLibrary
 from trio_kit.tui import Canvas, CanvasApp, FocusRing, PianoWidget, Rect
 from trio_kit.tui.widgets import ParamWidget, TextField, Widget
@@ -35,6 +35,8 @@ class InstrumentSpec:
     factory_presets_dir: str | Path | None = None
     factory_skins_dir: str | Path | None = None
     legato_glide: bool = False
+    max_voices: int = 16
+    extras_validator: ExtraValidator | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.identifier, str) or not re.fullmatch(r"[a-z][a-z0-9-]{0,31}", self.identifier):
@@ -53,6 +55,10 @@ class InstrumentSpec:
             raise ValueError("on_screen must be callable or None")
         if not isinstance(self.legato_glide, bool):
             raise ValueError("legato_glide must be a boolean")
+        if isinstance(self.max_voices, bool) or not isinstance(self.max_voices, int) or self.max_voices <= 0:
+            raise ValueError("max_voices must be a positive integer")
+        if self.extras_validator is not None and not callable(self.extras_validator):
+            raise ValueError("extras_validator must be callable or None")
 
 
 class _OverlayLayer(Widget):
@@ -90,6 +96,7 @@ class Shell:
         no_audio: bool = False,
         device: int | str | None = None,
         sample_rate: int = 48_000,
+        seed: int = 0,
         skin_id: str | None = None,
         mono: bool = False,
         data_dir: str | Path | None = None,
@@ -100,7 +107,13 @@ class Shell:
         if not isinstance(spec, InstrumentSpec):
             raise TypeError("spec must be an InstrumentSpec")
         self.spec = spec
-        self.engine = engine or Engine(spec.instrument_factory(), sample_rate=sample_rate, registry=spec.registry)
+        self.engine = engine or Engine(
+            spec.instrument_factory(),
+            sample_rate=sample_rate,
+            seed=seed,
+            max_voices=spec.max_voices,
+            registry=spec.registry,
+        )
         if spec.registry is not None and self.engine.registry.specs != spec.registry.specs:
             raise ValueError("engine registry must match InstrumentSpec.registry")
         self.registry = self.engine.registry
@@ -126,6 +139,7 @@ class Shell:
             data_dir=data_dir,
             factory_package=spec.factory_package,
             factory_dir=spec.factory_presets_dir,
+            extras_validator=spec.extras_validator,
         )
         self.keyboard = KeyboardPiano()
         self._known_params = dict(self.engine.param_snapshot)

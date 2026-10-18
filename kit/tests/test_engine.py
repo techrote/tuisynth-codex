@@ -112,6 +112,29 @@ def test_preset_extras_and_legato_retarget_apply_at_the_next_block_boundary() ->
     assert voice.pitch == 64
 
 
+def test_optional_instrument_block_boundary_hook_runs_after_snapshot_and_extras_before_voices() -> None:
+    class BoundaryInstrument(FakeInstrument):
+        def __init__(self) -> None:
+            super().__init__()
+            self.boundaries: list[tuple[int, int, dict[str, object]]] = []
+
+        def on_block_boundary(self, params) -> None:
+            self.boundaries.append((self.bus_frames, params.version, dict(self.extras)))
+
+    instrument = BoundaryInstrument()
+    engine = Engine(instrument, registry=gain_registry())
+    engine.push(PresetApply({"amp.gain": 0.25}, {"character": ["soft"]}))
+    engine.push(NoteOn(1, 60, 0.8, "test"))
+
+    engine.render(1)
+    engine.render(255)
+    assert instrument.boundaries == [(0, 1, {"character": ["soft"]})]
+    assert len(instrument.created) == 1
+
+    engine.render(1)
+    assert len(instrument.boundaries) == 2
+
+
 def test_invalid_queued_parameter_is_reported_and_does_not_break_audio() -> None:
     engine = Engine(FakeInstrument(), registry=gain_registry())
     engine.push(ParamSet("unknown.key", 1))

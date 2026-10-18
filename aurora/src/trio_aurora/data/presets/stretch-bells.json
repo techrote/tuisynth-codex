@@ -1,0 +1,23 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "aurora",
+  "id": "stretch-bells",
+  "name": "Stretch Bells",
+  "description": "Inharmonic stretched partials bloom into a slow metallic bell cloud.",
+  "params": {
+    "spec.count": 2,
+    "spec.bw": 28,
+    "spec.bwscale": 0.7,
+    "spec.stretch": 1.03,
+    "spec.tilt": -5,
+    "osc.width": 0.94,
+    "amp.a": 1.4,
+    "amp.d": 4.5,
+    "amp.s": 0.62,
+    "fx.delay.time": 0.68,
+    "fx.delay.fb": 0.46,
+    "fx.reverb.mix": 0.47
+  },
+  "extras": {"harmonics": [1.0, 0.18, 0.78, 0.12, 0.62, 0.09, 0.48, 0.07, 0.38, 0.05, 0.3, 0.04, 0.23, 0.03, 0.18, 0.02]},
+  "tags": ["pad", "bells", "inharmonic"]
+}

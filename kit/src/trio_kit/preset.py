@@ -142,6 +142,7 @@ class Preset:
     params: Mapping[str, int | float]
     extras: Mapping[str, Any] = field(default_factory=dict)
     tags: tuple[str, ...] = ()
+    description: str = ""
 
     def __post_init__(self) -> None:
         if not isinstance(self.synth, str) or not _SYNTH_RE.fullmatch(self.synth):
@@ -149,6 +150,8 @@ class Preset:
         validate_preset_id(self.id)
         if not isinstance(self.name, str) or not self.name.strip():
             raise PresetError("preset name must be a non-empty string")
+        if not isinstance(self.description, str) or len(self.description) > 512:
+            raise PresetError("preset description must be a string of at most 512 characters")
         if not isinstance(self.params, Mapping):
             raise PresetError("params must be an object")
         if not isinstance(self.extras, Mapping):
@@ -188,7 +191,7 @@ class Preset:
         return PRESET_SCHEMA
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        document = {
             "schema": PRESET_SCHEMA,
             "synth": self.synth,
             "id": self.id,
@@ -197,6 +200,9 @@ class Preset:
             "extras": dict(self.extras),
             "tags": list(self.tags),
         }
+        if self.description:
+            document["description"] = self.description
+        return document
 
     def to_json(self) -> str:
         return serialize_preset(self)
@@ -266,7 +272,7 @@ def parse_preset(
     missing = required - document.keys()
     if missing:
         raise PresetError(f"preset is missing required field {sorted(missing)[0]!r}")
-    allowed = required | {"extras", "tags"}
+    allowed = required | {"extras", "tags", "description"}
     unknown_fields = document.keys() - allowed
     if unknown_fields:
         raise PresetError(f"unknown top-level field {sorted(unknown_fields)[0]!r}")
@@ -315,7 +321,18 @@ def parse_preset(
     tags = document.get("tags", [])
     if not isinstance(tags, list) or any(not isinstance(tag, str) for tag in tags):
         raise PresetError("tags must be a list of strings")
-    return Preset(synth=synth, id=preset_id, name=name, params=params, extras=extras, tags=tuple(tags))
+    description = document.get("description", "")
+    if not isinstance(description, str) or len(description) > 512:
+        raise PresetError("description must be a string of at most 512 characters")
+    return Preset(
+        synth=synth,
+        id=preset_id,
+        name=name,
+        params=params,
+        extras=extras,
+        tags=tuple(tags),
+        description=description,
+    )
 
 
 def load_preset(

@@ -2,17 +2,12 @@
 
 from __future__ import annotations
 
-import argparse
+from typing import Sequence
 
 from trio_aurora import __version__
+from trio_aurora.instrument import aurora_spec
+from trio_kit.cli import run_cli
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        prog="aurora",
-        description="AURORA terminal synthesizer. Run without options to see available commands.",
-    )
-    parser.add_argument("--version", action="version", version=f"aurora {__version__}")
-    parser.parse_args()
-    parser.print_help()
-    return 0
+def main(argv: Sequence[str] | None = None) -> int:
+    return run_cli(aurora_spec(), argv=argv, command="aurora", version=__version__)
