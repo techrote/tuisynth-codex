@@ -132,12 +132,29 @@ tested for continuity: processing one signal in random chunk sizes equals proces
 | Unit | Contract |
 |---|---|
 | `Adsr` | Attack is a linear ramp; decay and release are exponential approaches whose stated time is the time to cover 99 % of the distance. Closed-form per stage, split at stage boundaries inside a block. `gate_on(velocity)`, `gate_off()`, `finished`. |
-| `Biquad` | RBJ-cookbook low-pass / band-pass / high-pass / peaking coefficients; processing with `scipy.signal.lfilter(b, a, x, zi=state)`; coefficient changes at block boundaries with parameter smoothing over 5 ms. Stable for cutoff 20 Hz-0.45 x sample rate and resonance up to Q 20. |
+| `Biquad` | RBJ-cookbook low-pass / band-pass / high-pass / peaking coefficients; processing with `scipy.signal.lfilter(b, a, x, zi=state)`; parameter changes settle over 5 ms, with coefficients evaluated in fixed spans no longer than 32 frames. Stable for cutoff 20 Hz-0.45 x sample rate and resonance up to Q 20. |
 | `Lfo` | sine, triangle, saw, square, sample-and-hold, smooth random (seeded); vectorised phase; rate 0.01-20 Hz; outputs -1..1. |
 | `DelayLine` | Circular buffer, fractional (linear-interpolated) read. **Chronological**: after writing 0..7, a read of delay 4 returns 4,5,6,7 (MOD-004 regression test). Feedback delays require delay >= one block so a block is computed from past samples only. |
 | `Chorus` | Two modulated `DelayLine` taps (7-20 ms, LFO 0.1-6 Hz, opposite phases L/R), mix. |
 | `StereoDelay` | Ping-pong feedback delay 60 ms-2 s, feedback 0-0.9 with a low-pass in the loop, mix. |
 | `Reverb` | 8-line feedback delay network with a Householder matrix, all line lengths > `BLOCK` (so each block is computed from past samples), per-line one-pole damping via `lfilter`, size 0.2-1.6 scales lengths/decay, mix. Must decay to below -90 dBFS after input stops for size <= 1.6. |
+
+All DSP `process` methods accept `0..BLOCK` frames and return float32 output; signal processors
+preserve their configured channel layout and the stereo effects are two-channel. `Adsr(sample_rate, attack, decay, sustain, release)`
+uses seconds and `gate_on(velocity)`/`gate_off()`; `set_parameters()` updates stage settings
+atomically while keeping active-stage output continuous. `Biquad(sample_rate, kind, cutoff, q,
+gain_db)` preserves mono/multichannel layout; `kind` accepts `lowpass`, `bandpass`, `highpass`, and
+`peaking` (or `lp`, `bp`, `hp`, `peak` aliases), `q` is 0.05..20, and peaking gain is
+-36..+36 dB. Parameter changes begin on the next process call and settle over 5 ms.
+
+`Lfo(sample_rate, rate, waveform, seed)` returns mono samples; waveform names are `sine`,
+`triangle`, `saw`, `square`, `sample_hold`, and `smooth_random`. `DelayLine(max_delay_samples,
+channels=1)` exposes `write(buffer)`, `read(delay_samples, frames)`, and causal
+`process(buffer, delay_samples)`. Reads are chronological: writing 0..7 then reading delay 4
+for 4 frames yields 4..7; fractional delays interpolate adjacent samples. `Chorus` uses a
+13.5 ms center and 6.5 ms depth by default. `StereoDelay` accepts 0.06..2.0 seconds, feedback
+0..0.9 and a 6 kHz feedback low-pass. `Reverb` accepts size 0.2..1.6 and mix 0..1; its eight
+line delays scale with size and remain longer than one block at supported sample rates.
 
 ## Master bus (TRIO-003)
 

@@ -28,6 +28,7 @@ from trio_kit.engine import (
     VoiceManager,
     open_backend,
 )
+from trio_kit.dsp import Adsr, Biquad, Chorus, DelayLine, Lfo, Reverb, StereoDelay
 from trio_kit.params import ParamError, ParamRegistry, ParamSnapshot, ParamSpec, ParamState, ParamWarning
 from trio_kit.preset import (
     Preset,
@@ -45,8 +46,12 @@ __version__ = "0.1.0"
 
 __all__ = [
     "BLOCK",
+    "Adsr",
+    "Biquad",
     "ControlChange",
+    "Chorus",
     "DEFAULT_SAMPLE_RATE",
+    "DelayLine",
     "Engine",
     "EngineTelemetry",
     "Event",
@@ -54,6 +59,7 @@ __all__ = [
     "Instrument",
     "InstrumentEvent",
     "MAX_EVENT_QUEUE",
+    "Lfo",
     "MasterBus",
     "ModWheel",
     "NoteIds",
@@ -75,8 +81,10 @@ __all__ = [
     "PresetError",
     "PresetLibrary",
     "PresetWarning",
+    "Reverb",
     "SoundDeviceBackend",
     "Sustain",
+    "StereoDelay",
     "Transport",
     "Voice",
     "VoiceManager",
