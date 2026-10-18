@@ -90,7 +90,8 @@ For `InstrumentEvent`, LOOM accepts individual string crossings as `pluck` or `b
 and `-1`/`up` for high-to-low. Regular notes and bounded surface-event voices share the
 pluck/bow voice budget; the engine publishes note-voice counts so the surface does not exceed
 the active 8-pluck/4-bow limit. Replaced strings retain a 5 ms fade tail; `mute` applies the
-same 5 ms anti-click choke to the selected string and any matching live keyboard note.
+same 5 ms anti-click choke to the selected string and any matching live keyboard note. Each
+strum event replaces the held-pitch snapshot; an empty held-pitch list clears chord tuning.
 
 ### Parameters
 

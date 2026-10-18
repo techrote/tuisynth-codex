@@ -184,6 +184,21 @@ def test_instrument_event_strum_is_sample_aligned_spread_and_muteable() -> None:
     assert engine.telemetry().last_error is None
 
 
+def test_empty_strum_held_pitch_snapshot_clears_previous_chord() -> None:
+    instrument = LoomInstrument()
+    params = _params(**{"play.mode": 1, "sym.tuning": 2, "strum.spread": 0})
+    instrument.on_block_boundary(params)
+    default_tuning = instrument._desired_sympathetic_pitches(params)
+
+    instrument.on_event("strum", (1, 40, 50, 53, 57))
+    assert instrument._held_pitches == (50.0, 53.0, 57.0)
+    assert instrument._desired_sympathetic_pitches(params) != default_tuning
+
+    instrument.on_event("strum", (1, 40))
+    assert instrument._held_pitches == ()
+    assert instrument._desired_sympathetic_pitches(params) == default_tuning
+
+
 def test_mute_instrument_event_chokes_matching_keyboard_string() -> None:
     params = loom_registry().validate(
         {

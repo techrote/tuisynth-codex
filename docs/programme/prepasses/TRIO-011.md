@@ -13,7 +13,7 @@
 - `Engine` already calls optional `on_block_boundary(snapshot)` before sample-offset events and processes `InstrumentEvent` at the correct split point through `on_event(name, payload)`. LOOM can therefore schedule bounded surface voices and strums without changing event ordering or blocking the audio callback.
 - Waveguide state will use a fixed circular history sized for MIDI 24 at the active sample rate. Every vector chunk is at most the smallest feedback delay M, so all delay taps read prior chunk history; this preserves the per-sample recurrence exactly and avoids unbounded arrays.
 - Note-on voices own seeded excitation generators. The instrument owns only bounded surface-event voices, the one-way 12-string sympathetic bank, modal body filters, and shared reverb. Sympathetic output is never routed back to the main strings.
-- The issue/RAG specify an optional string-crossing event, but not its payload. TRIO-011 will define and test `pluck`/`bow` as `(pitch, velocity[, string_index])`, `mute` as `(string_index)` and `strum` as `(direction, rows_per_second, held_pitch...)`; direction +1 means low-to-high, -1 means high-to-low. The format will be recorded in RAG for TRIO-012.
+- The issue/RAG specify an optional string-crossing event, but not its payload. TRIO-011 will define and test `pluck`/`bow` as `(pitch, velocity[, string_index])`, `mute` as `(string_index)` and `strum` as `(direction, rows_per_second, held_pitch...)`; direction +1 means low-to-high, -1 means high-to-low, and an empty held-pitch snapshot clears the chord. The format will be recorded in RAG for TRIO-012.
 - Body resonances are artistic modal approximations, not physical instrument measurements; type tables and scaling will say so explicitly.
 - A literal random one-loop pluck realization can suppress its fundamental and fail the issue's required raw FFT pitch estimate. The implementation retains seeded white noise and the specified LP/comb path, with a unit-amplitude seeded-phase fundamental floor before that path; the matching LOOM RAG contract is updated in this PR.
 - The waveguide accepts MIDI 24-100 while held strum pitches can span MIDI 0-127. Chord-follow sympathetic pitches are folded by octaves into the playable range, and the pitch test now checks every semitone from 24 through 100.
@@ -28,7 +28,7 @@
 
 ## Qualification results
 
-- `tools/check.py --package all --packaging` passed all 398 device-free tests (kit 338, AURORA 38, LOOM 21, DRIFT 1), built all four wheels, installed them into an isolated environment, and passed metadata/import/resource/CLI smoke checks.
+- `tools/check.py --package all --packaging` passed all 399 device-free tests (kit 338, AURORA 38, LOOM 22, DRIFT 1), built all four wheels, installed them into an isolated environment, and passed metadata/import/resource/CLI smoke checks.
 - The LOOM tuning regression iterates every semitone from MIDI 24 through 100 and remains within the specified ±5 cents. The 20-second maximum-decay/brightness/coupling performance gate passed.
 - No physical audio or MIDI hardware was exercised.
 

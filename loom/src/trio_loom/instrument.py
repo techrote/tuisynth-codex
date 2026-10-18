@@ -289,8 +289,7 @@ class LoomInstrument:
         speed = self._number(payload[1], 20.0) if len(payload) > 1 else 20.0
         held = tuple(self._number(value, -1) for value in payload[2:14])
         held = tuple(pitch for pitch in held if 0 <= pitch <= 127)
-        if held:
-            self._held_pitches = held
+        self._held_pitches = held
         mode = _choice(self._params, "play.mode", ("direct", "chord"))
         pitches = self._strum.pitches(mode, self._held_pitches)
         velocity = self._strum.crossing_velocity(speed)
