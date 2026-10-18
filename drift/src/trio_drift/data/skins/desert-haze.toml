@@ -1,0 +1,78 @@
+schema = "md-editor-theme/1.1"
+id = "desert-haze"
+name = "DESERT HAZE"
+instrument = "drift"
+fps = 20
+
+[palette]
+bg = "#1a120c"
+fg = "#f2dfbd"
+muted = "#9a7958"
+dune = "#734c2e"
+sand = "#bd8751"
+sun = "#f4c574"
+glow = "#ffe6a3"
+rose = "#c46d4d"
+young = "#8b5a39"
+mid = "#bd8751"
+old = "#e3b86f"
+white = "#fff0cf"
+black = "#100b07"
+red = "#d65c43"
+
+[styles]
+background = { fg = "fg", bg = "bg" }
+text = { fg = "fg", bg = "bg" }
+muted = { fg = "muted", bg = "bg" }
+border = { fg = "dune", bg = "bg" }
+title = { fg = "sun", bg = "bg", bold = true }
+heading = { fg = "glow", bg = "bg", bold = true }
+accent = { fg = "rose", bg = "bg", bold = true }
+status = { fg = "sun", bg = "bg" }
+warning = { fg = "glow", bg = "bg", bold = true }
+error = { fg = "red", bg = "bg", bold = true }
+focused = { fg = "black", bg = "sun", bold = true }
+hover = { fg = "glow", bg = "#3b281a" }
+pressed = { fg = "black", bg = "rose", bold = true }
+selected = { fg = "black", bg = "glow", bold = true }
+disabled = { fg = "muted", bg = "bg" }
+key_white = { fg = "black", bg = "#f3e3c9" }
+key_black = { fg = "sun", bg = "#302116" }
+key_pressed = { fg = "black", bg = "glow", bold = true }
+meter_low = { fg = "dune", bg = "bg" }
+meter_mid = { fg = "sand", bg = "bg" }
+meter_high = { fg = "sun", bg = "bg", bold = true }
+grain_age_0 = { fg = "young", bg = "bg" }
+grain_age_1 = { fg = "sand", bg = "bg" }
+grain_age_2 = { fg = "sun", bg = "bg" }
+grain_age_3 = { fg = "old", bg = "bg" }
+grain_age_4 = { fg = "glow", bg = "bg", bold = true }
+isobar_0 = { fg = "#734c2e", bg = "bg" }
+isobar_1 = { fg = "#9a623d", bg = "bg" }
+isobar_2 = { fg = "#bd8751", bg = "bg" }
+isobar_3 = { fg = "#e3b86f", bg = "bg" }
+isobar_4 = { fg = "#f4c574", bg = "bg" }
+
+[glyphs]
+density = [" ", ".", ":", "-", "=", "+", "*", "#"]
+grain = [".", ":", "o", "O", "●"]
+isobar = [".", ":", "~"]
+cursor = "@"
+frame = "round"
+
+[ramps]
+grain_age = ["young", "sand", "sun", "old", "glow"]
+isobar = ["#734c2e", "#9a623d", "#bd8751", "#e3b86f", "#f4c574"]
+
+[art]
+logo = "* DESERT HAZE *"
+isobars = "heat shimmer / dune pressure waves"
+grains = "amber dust · warm haze · long dusk"
+cursor = "sun at horizon · @"
+
+[fallbacks.ascii.glyphs]
+density = [" ", ".", ":", "+", "#"]
+grain = [".", ":", "o", "O", "#"]
+isobar = [".", "-", "="]
+cursor = "@"
+frame = "ascii"

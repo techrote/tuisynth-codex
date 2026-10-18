@@ -65,7 +65,7 @@ class EngineTelemetry:
                     data[key[:64]] = value[:128] if isinstance(value, str) else value
                 elif isinstance(value, float) and math.isfinite(value):
                     data[key[:64]] = value
-                elif isinstance(value, (tuple, list)) and len(value) <= 64:
+                elif isinstance(value, (tuple, list)) and len(value) <= 96:
                     # Bounded numeric vectors support compact instrument visualizers
                     # without allowing arbitrary mutable or unbounded telemetry.
                     if not all(isinstance(item, (int, float)) and not isinstance(item, bool) for item in value):

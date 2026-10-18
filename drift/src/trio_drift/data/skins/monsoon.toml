@@ -1,0 +1,78 @@
+schema = "md-editor-theme/1.1"
+id = "monsoon"
+name = "MONSOON"
+instrument = "drift"
+fps = 24
+
+[palette]
+bg = "#071611"
+fg = "#d5f0d9"
+muted = "#668e75"
+forest = "#174c37"
+rain = "#338e69"
+leaf = "#68c47e"
+lime = "#b8e47c"
+sun = "#f2df80"
+young = "#27694d"
+mid = "#479e69"
+old = "#8dd287"
+white = "#efffe9"
+black = "#050d09"
+red = "#ed785d"
+
+[styles]
+background = { fg = "fg", bg = "bg" }
+text = { fg = "fg", bg = "bg" }
+muted = { fg = "muted", bg = "bg" }
+border = { fg = "rain", bg = "bg" }
+title = { fg = "leaf", bg = "bg", bold = true }
+heading = { fg = "lime", bg = "bg", bold = true }
+accent = { fg = "rain", bg = "bg", bold = true }
+status = { fg = "leaf", bg = "bg" }
+warning = { fg = "sun", bg = "bg", bold = true }
+error = { fg = "red", bg = "bg", bold = true }
+focused = { fg = "black", bg = "lime", bold = true }
+hover = { fg = "white", bg = "#1a3929" }
+pressed = { fg = "black", bg = "leaf", bold = true }
+selected = { fg = "black", bg = "lime", bold = true }
+disabled = { fg = "muted", bg = "bg" }
+key_white = { fg = "black", bg = "#e1f0db" }
+key_black = { fg = "lime", bg = "#12231a" }
+key_pressed = { fg = "black", bg = "sun", bold = true }
+meter_low = { fg = "forest", bg = "bg" }
+meter_mid = { fg = "rain", bg = "bg" }
+meter_high = { fg = "lime", bg = "bg", bold = true }
+grain_age_0 = { fg = "young", bg = "bg" }
+grain_age_1 = { fg = "mid", bg = "bg" }
+grain_age_2 = { fg = "rain", bg = "bg" }
+grain_age_3 = { fg = "leaf", bg = "bg" }
+grain_age_4 = { fg = "lime", bg = "bg", bold = true }
+isobar_0 = { fg = "#174c37", bg = "bg" }
+isobar_1 = { fg = "#27694d", bg = "bg" }
+isobar_2 = { fg = "#338e69", bg = "bg" }
+isobar_3 = { fg = "#68c47e", bg = "bg" }
+isobar_4 = { fg = "#b8e47c", bg = "bg" }
+
+[glyphs]
+density = [" ", ".", ":", "-", "=", "+", "*", "#"]
+grain = [".", ":", "o", "O", "●"]
+isobar = [".", "~", "≈"]
+cursor = "@"
+frame = "heavy"
+
+[ramps]
+grain_age = ["young", "mid", "rain", "leaf", "lime"]
+isobar = ["#174c37", "#27694d", "#338e69", "#68c47e", "#b8e47c"]
+
+[art]
+logo = "~ M O N S O O N ~"
+isobars = "tropical rainbands / converging pressure rings"
+grains = "green rain · leaf mist · heavy air"
+cursor = "cyclone eye · @"
+
+[fallbacks.ascii.glyphs]
+density = [" ", ".", ":", "+", "#"]
+grain = [".", ":", "o", "O", "#"]
+isobar = [".", "-", "="]
+cursor = "@"
+frame = "ascii"

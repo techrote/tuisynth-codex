@@ -16,4 +16,4 @@ drift = "trio_drift.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-trio_drift = ["py.typed", "data/presets/*.json", "data/skins/*.txt"]
+trio_drift = ["py.typed", "data/presets/*.json", "data/skins/*.toml"]

@@ -326,6 +326,11 @@ def test_dense_six_stream_96_grain_case_is_bounded_and_finishes_promptly() -> No
         assert np.isfinite(rendered).all()
         assert 80 <= telemetry["active_grains"] <= 96
         assert telemetry["dropped_grains"] > 0
+        grain_count = telemetry["active_grains"]
+        assert len(telemetry["grain_pan"]) == grain_count
+        assert len(telemetry["grain_ratio"]) == grain_count
+        assert len(telemetry["grain_amplitude"]) == grain_count
+        assert len(telemetry["grain_age"]) == grain_count
         assert elapsed < 10.0
     finally:
         engine.close()

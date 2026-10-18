@@ -189,8 +189,10 @@ def check_wheels(packages: Sequence[str]) -> None:
                     if not required_presets <= listed:
                         raise CheckFailed(f"aurora preset listing omitted {sorted(required_presets - listed)}")
                 if package == "drift":
+                    drift_data_dir = workspace / "drift-user-data"
+                    drift_data_dir.mkdir()
                     preset_result = run_process(
-                        [str(venv_script(environment, command)), "--list-presets"],
+                        [str(venv_script(environment, command)), "--list-presets", "--data-dir", str(drift_data_dir)],
                         label="installed drift factory preset listing",
                         cwd=workspace,
                         capture=True,
@@ -202,6 +204,44 @@ def check_wheels(packages: Sequence[str]) -> None:
                     listed = {line.split("\t", maxsplit=1)[0] for line in preset_result.stdout.splitlines() if line}
                     if listed != required_presets:
                         raise CheckFailed(f"drift preset listing differs from required set: {sorted(listed ^ required_presets)}")
+                    skin_result = run_process(
+                        [str(venv_script(environment, command)), "--list-skins", "--data-dir", str(drift_data_dir)],
+                        label="installed drift factory skin listing",
+                        cwd=workspace,
+                        capture=True,
+                    )
+                    listed_skins = set(skin_result.stdout.splitlines())
+                    required_skins = {"mono", "squall", "desert-haze", "monsoon"}
+                    if listed_skins != required_skins:
+                        raise CheckFailed(f"drift skin listing differs from required set: {sorted(listed_skins ^ required_skins)}")
+                    qualified_environment = os.environ.copy()
+                    qualified_environment.pop("NO_COLOR", None)
+                    snapshot = run_process(
+                        [str(venv_script(environment, command)), "--snapshot", "80x24", "--screen", "grain", "--skin", "squall", "--data-dir", str(drift_data_dir)],
+                        label="installed drift compact headless snapshot",
+                        cwd=workspace,
+                        env=qualified_environment,
+                        capture=True,
+                    )
+                    if any(marker not in snapshot.stdout for marker in ("GRAIN", "DRIFT", "squall")):
+                        raise CheckFailed("drift compact snapshot did not contain its instrument, grain HUD and selected skin")
+                    run_process(
+                        [str(venv_script(environment, command)), "--selftest", "--data-dir", str(drift_data_dir)],
+                        label="installed drift offline selftest",
+                        cwd=workspace,
+                        env=qualified_environment,
+                        capture=True,
+                    )
+                    render_path = workspace / "drift-smoke.wav"
+                    run_process(
+                        [str(venv_script(environment, command)), "--render", str(render_path), "--notes", "C4", "--seconds", "0.05", "--data-dir", str(drift_data_dir)],
+                        label="installed drift offline render",
+                        cwd=workspace,
+                        env=qualified_environment,
+                        capture=True,
+                    )
+                    if not render_path.is_file() or render_path.stat().st_size <= 44:
+                        raise CheckFailed("drift offline render did not create a non-empty WAV file")
 
 
 def make_parser() -> argparse.ArgumentParser:

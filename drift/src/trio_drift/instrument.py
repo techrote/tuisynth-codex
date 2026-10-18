@@ -363,7 +363,7 @@ class DriftInstrument:
     def telemetry(self) -> Mapping[str, object]:
         grains = self._pool.grain_snapshot
         return {
-            "active_grains": self._pool.active_count,
+            "active_grains": len(grains),
             "spawned_grains": self._pool.spawned,
             "dropped_grains": self._pool.dropped,
             "grain_density": float(self._params["gr.density"]),
@@ -376,11 +376,13 @@ class DriftInstrument:
             "source_regenerations": self._source_regenerations,
             "voice_rms": self._last_voice_rms,
             "grain_pan": tuple(grain.pan for grain in grains),
+            "grain_ratio": tuple(grain.ratio for grain in grains),
+            "grain_amplitude": tuple(grain.amplitude for grain in grains),
+            "grain_age": tuple(min(1.0, max(0.0, (self._absolute_frame - grain.start_frame) / grain.length)) for grain in grains),
         }
 
     def reset(self) -> None:
         self._pool.grains.clear()
-        self._pool._last = ()
         self._formants.reset()
         if self._brightness_filter is not None:
             self._brightness_filter.reset()

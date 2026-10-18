@@ -126,7 +126,6 @@ class GrainPool:
         self.grains: list[Grain] = []
         self.dropped = 0
         self.spawned = 0
-        self._last: tuple[Grain, ...] = ()
 
     @staticmethod
     def _valid_capacity(value: int) -> int:
@@ -140,7 +139,8 @@ class GrainPool:
 
     @property
     def grain_snapshot(self) -> tuple[Grain, ...]:
-        return self._last
+        """Return a detached snapshot of every currently active grain."""
+        return tuple(self.grains)
 
     def set_capacity(self, capacity: int) -> None:
         self.capacity = self._valid_capacity(capacity)
@@ -175,7 +175,6 @@ class GrainPool:
         output = np.zeros((frames, 2), dtype=np.float64)
         segment_end = block_offset + frames
         keep: list[Grain] = []
-        snapshot: list[Grain] = []
         for grain in self.grains:
             grain_end = grain.start_frame + grain.length
             overlap_start = max(block_offset, grain.start_frame)
@@ -197,11 +196,9 @@ class GrainPool:
                 weighted = signal * window * grain.amplitude
                 output[destination, 0] += weighted * left_gain
                 output[destination, 1] += weighted * right_gain
-                snapshot.append(grain)
             if grain_end > segment_end:
                 keep.append(grain)
         self.grains = keep
-        self._last = tuple(snapshot[-64:])
         return output.astype(np.float32)
 
 
