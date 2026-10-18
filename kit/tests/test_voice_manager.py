@@ -115,3 +115,27 @@ def test_unknown_and_duplicate_note_ids_do_not_corrupt_voice_ownership() -> None
     else:
         raise AssertionError("duplicate note ids must be rejected")
     assert manager.note_ids == (1,)
+
+
+def test_dynamic_limit_fades_removed_slots_and_reuses_capacity_when_raised() -> None:
+    manager = VoiceManager(FakeInstrument(), max_voices=4, sample_rate=48_000)
+    manager.note_on(note(1), PARAMS)
+    manager.note_on(note(2), PARAMS)
+    removed = manager.note_on(note(3), PARAMS)
+
+    manager.set_limit(2)
+    assert manager.limit == 2
+    assert manager.note_ids == (1, 2)
+    assert removed.release_calls == 1
+    assert manager.tail_count == 1
+    assert manager._tails[0].fade_frames == 240
+
+    manager.set_limit(4)
+    manager.note_on(note(4), PARAMS)
+    manager.note_on(note(5), PARAMS)
+    assert manager.limit == 4
+    assert manager.note_ids == (1, 2, 4, 5)
+
+    for invalid in (0, 5, True, 2.0):
+        with pytest.raises(ValueError, match="limit"):
+            manager.set_limit(invalid)  # type: ignore[arg-type]

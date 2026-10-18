@@ -103,6 +103,19 @@ Immutable dataclasses: `NoteOn(note_id, pitch, velocity, source, frame=0)`,
 
 - Allocation order: a free voice; else steal the quietest **released** voice; else the oldest
   held voice. A stolen voice gets a 5 ms fade, never an instant cut.
+- Instruments may provide an optional `voice_limit(params)` callback. It is queried after
+  `on_block_boundary` and before sample-offset events at each internal block. Its result may
+  shrink or expand the manager's preallocated constructor capacity; slots removed by a shrink
+  become bounded 5 ms fade tails, while expansion reuses the same slots. `EngineTelemetry`
+  reports the current active limit. Instruments without this callback retain a fixed limit.
+- An instrument that uses auxiliary string/surface voices may implement
+  `set_main_voice_count(count, active_limit)`. The engine calls it at the block boundary and
+  immediately after note-on, note-off, sustain, or panic dispatch so auxiliary voices can
+  share the same effective polyphony budget, including a constructor capacity smaller than
+  the instrument's requested mode limit. Instruments without this callback are unaffected.
+- An instrument with auxiliary random voices may implement `set_engine_seed(seed)`. The
+  engine calls it once during construction, before `prepare`, so auxiliary voice generators
+  derive deterministically from the same engine seed as `VoiceManager` voices.
 - Fade tails remain scheduled for their full duration. Their bounded capacity is sized for
   the maximum event burst in the configured queue plus active voices.
 - Two `NoteOn`s with the same pitch create two voices. Each `NoteOff` releases its own voice.

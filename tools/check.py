@@ -141,6 +141,14 @@ def check_wheels(packages: Sequence[str]) -> None:
                     "assert AuroraInstrument and aurora_spec and generate_table_set; "
                     "assert files('trio_aurora').joinpath('data/presets/glacier-choir.json').is_file()"
                 )
+            if package == "loom":
+                check_script += (
+                    "; from trio_loom import LoomInstrument, WaveguideString, loom_registry, load_factory_presets; "
+                    "from importlib.resources import files; "
+                    "assert LoomInstrument and WaveguideString and loom_registry; "
+                    "assert len(load_factory_presets()) >= 8; "
+                    "assert files('trio_loom').joinpath('data/presets/rosewood-harp.json').is_file()"
+                )
             run_process(
                 [str(python), "-c", check_script],
                 label=f"installed {distribution} metadata and import smoke check",

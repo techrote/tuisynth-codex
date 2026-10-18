@@ -1,0 +1,9 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "loom",
+  "id": "muted-guitar",
+  "name": "Muted Guitar",
+  "description": "A dark, short guitar pluck with a quick palm-muted release.",
+  "params": {"str.bright": 0.22, "str.decay": 2.2, "str.release": 0.12, "str.pickpos": 0.2, "body.type": 1, "body.mix": 0.38, "sym.mix": 0.08, "sym.couple": 0.18, "fx.reverb.mix": 0.12, "master.level": 0.72},
+  "tags": ["guitar", "muted", "short"]
+}

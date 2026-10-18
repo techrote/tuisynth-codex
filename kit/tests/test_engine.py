@@ -135,6 +135,36 @@ def test_optional_instrument_block_boundary_hook_runs_after_snapshot_and_extras_
     assert len(instrument.boundaries) == 2
 
 
+def test_optional_dynamic_voice_limit_is_applied_per_block_and_reported() -> None:
+    class DynamicLimitInstrument(FakeInstrument):
+        def __init__(self) -> None:
+            super().__init__()
+            self.limit = 2
+
+        def voice_limit(self, params) -> int:
+            del params
+            return self.limit
+
+    instrument = DynamicLimitInstrument()
+    engine = Engine(instrument, max_voices=4)
+    engine.push(NoteOn(1, 48, 0.7, "test"))
+    engine.push(NoteOn(2, 52, 0.7, "test"))
+    engine.push(NoteOn(3, 55, 0.7, "test"))
+    engine.render(256)
+    assert engine.telemetry().active_voices == 2
+    assert engine.telemetry().max_voices == 2
+
+    instrument.limit = 1
+    engine.render(256)
+    assert engine.telemetry().active_voices == 1
+    assert engine.telemetry().max_voices == 1
+    assert sum(voice.release_calls for voice in instrument.created) >= 2
+
+    instrument.limit = 4
+    engine.render(256)
+    assert engine.telemetry().max_voices == 4
+
+
 def test_invalid_queued_parameter_is_reported_and_does_not_break_audio() -> None:
     engine = Engine(FakeInstrument(), registry=gain_registry())
     engine.push(ParamSet("unknown.key", 1))

@@ -1,0 +1,9 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "loom",
+  "id": "rosewood-harp",
+  "name": "Rosewood Harp",
+  "description": "A warm, open pluck with a gentle pentatonic sympathy bed.",
+  "params": {"body.type": 4, "body.mix": 0.46, "body.size": 1.05, "str.bright": 0.52, "str.decay": 7.5, "str.pickpos": 0.16, "sym.scale": 3, "sym.mix": 0.3, "fx.reverb.mix": 0.3},
+  "tags": ["harp", "warm", "pluck"]
+}

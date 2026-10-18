@@ -1,0 +1,9 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "loom",
+  "id": "autoharp-dorian",
+  "name": "Autoharp Dorian",
+  "description": "Chord-spread strings over a Dorian sympathetic bed.",
+  "params": {"play.mode": 1, "sym.tuning": 2, "sym.scale": 2, "sym.root": 2, "body.type": 4, "body.mix": 0.35, "strum.spread": 28, "str.decay": 5.5, "fx.reverb.mix": 0.28},
+  "tags": ["autoharp", "chord", "dorian"]
+}

@@ -1,0 +1,9 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "loom",
+  "id": "cello-drone",
+  "name": "Cello Drone",
+  "description": "A soft bowed line supported by low sympathetic root and fifth strings.",
+  "params": {"exc.mode": 1, "exc.pressure": 0.42, "exc.speed": 0.56, "exc.noise": 0.2, "sym.tuning": 1, "sym.mix": 0.48, "sym.decay": 16, "body.type": 3, "body.size": 1.35, "body.mix": 0.55, "str.decay": 8, "str.release": 0.7, "fx.reverb.mix": 0.38},
+  "tags": ["cello", "bow", "drone"]
+}

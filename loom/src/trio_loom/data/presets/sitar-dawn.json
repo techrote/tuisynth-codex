@@ -1,0 +1,9 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "loom",
+  "id": "sitar-dawn",
+  "name": "Sitar Dawn",
+  "description": "A bright pluck with Bhairav drones and a resonant sitar-like body.",
+  "params": {"sym.tuning": 1, "sym.scale": 4, "sym.root": 2, "sym.mix": 0.65, "sym.couple": 0.55, "sym.decay": 18, "body.type": 5, "body.mix": 0.6, "str.bright": 0.75, "str.decay": 10, "fx.reverb.mix": 0.32},
+  "tags": ["sitar", "bhairav", "drone"]
+}

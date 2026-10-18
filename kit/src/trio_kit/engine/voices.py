@@ -64,6 +64,7 @@ class VoiceManager:
             raise TypeError("instrument must implement create_voice(rng)")
         self.instrument = instrument
         self.max_voices = max_voices
+        self._limit = max_voices
         self.sample_rate = sample_rate
         self.seed = seed
         self._slots = [_VoiceSlot() for _ in range(max_voices)]
@@ -78,6 +79,11 @@ class VoiceManager:
     def active_count(self) -> int:
         self._remove_finished()
         return len(self._by_note)
+
+    @property
+    def limit(self) -> int:
+        """Current allocation limit, which may be lower than preallocated capacity."""
+        return self._limit
 
     @property
     def tail_count(self) -> int:
@@ -149,15 +155,34 @@ class VoiceManager:
             index = min(range(len(self._tails)), key=lambda i: (self._tails[i].remaining, self._tails[i].last_level, i))
             self._tails.pop(index)
 
+    def set_limit(self, limit: int) -> None:
+        """Change the active voice limit without reallocating or cutting voices abruptly.
+
+        Instruments may expose an optional ``voice_limit(params)`` method. Capacity is
+        fixed when the manager is created; a downward change releases occupied slots
+        outside the new active range into the same bounded 5 ms fade-tail pool used when
+        voices are stolen. Raising the limit simply makes those preallocated slots usable.
+        """
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= self.max_voices:
+            raise ValueError(f"limit must be an integer from 1 through {self.max_voices}")
+        if limit == self._limit:
+            return
+        if limit < self._limit:
+            for slot in self._slots[limit: self._limit]:
+                if slot.note_id is not None:
+                    self._make_tail(slot, 5.0)
+        self._limit = limit
+
     def _select_slot(self) -> tuple[_VoiceSlot, bool]:
         self._remove_finished()
-        for slot in self._slots:
+        active_slots = self._slots[: self._limit]
+        for slot in active_slots:
             if slot.note_id is None:
                 return slot, False
-        released = [slot for slot in self._slots if slot.released and not slot.sustained]
+        released = [slot for slot in active_slots if slot.released and not slot.sustained]
         if released:
             return min(released, key=lambda slot: (slot.last_level, slot.order)), True
-        return min(self._slots, key=lambda slot: slot.order), True
+        return min(active_slots, key=lambda slot: slot.order), True
 
     def note_on(self, event: NoteOn, params: ParamSnapshot) -> Voice:
         if not isinstance(event, NoteOn):
