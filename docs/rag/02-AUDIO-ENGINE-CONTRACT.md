@@ -149,9 +149,10 @@ Immutable dataclasses: `NoteOn(note_id, pitch, velocity, source, frame=0)`,
   same platform.
 - `EngineTelemetry.instrument` is a read-only mapping capped at 16 accepted fields. Keys are
   strings capped at 64 characters; scalar values are strings (128 characters maximum), bools,
-  ints, `None`, or finite floats. Finite numeric lists/tuples of at most 64 values are copied
-  into immutable float tuples; invalid and oversized values are dropped. This supports small
-  bounded instrument visualizers without exposing mutable arrays through telemetry.
+  ints, `None`, or finite floats. Finite numeric lists/tuples of at most 96 values are copied
+  into immutable float tuples; invalid and oversized values are dropped. The 96-value bound
+  supports DRIFT's maximum active-grain visualizer while remaining bounded and avoiding mutable
+  arrays through telemetry.
 
 ## DSP building blocks (TRIO-004)
 

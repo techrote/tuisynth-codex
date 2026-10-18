@@ -140,14 +140,20 @@ Full-screen weather map with pop-over HUD drawers, 100x30:
 - **Map**: background isobars from a slowly drifting seeded 2-D value-noise field drawn with
   the skin `isobar` glyph ramp; foreground particles are the **real active grains** from
   telemetry: x from grain pan, y from log pitch ratio, glyph from the skin `grain` ramp by
-  amplitude, colour by age. The storm cursor `@` (skin glyph) sits at `field.x/field.y`.
+  amplitude, colour by normalized age. The active-grain count and its synchronized pan, ratio,
+  amplitude and age vectors come from one snapshot and are bounded at the `gr.max` ceiling of
+  96. The storm cursor `@` (skin glyph) sits at `field.x/field.y`.
 - **Gestures**: left-drag moves the cursor (sends `field.x`, `field.y`); holding without
   moving keeps a gust active; right-click recentres the cursor; wheel changes `gr.density`.
   Keyboard twin: focus the map, arrows move the cursor 2 % per press, `PageUp`/`PageDown`
   move it 10 % vertically, `Enter` toggles a held gust, `Delete` recentres.
-- **Drawers**: `F3` grain, `F4` air (source, formant, wind), `F5` library. Drawers overlay the
-  lower part of the map and close with `Esc`; only one drawer is open at a time.
+- **Drawers**: `F3` grain, `F4` air (source, formant, wind), `F5` library. Grain and Air drawers
+  overlay the lower map and close with `Esc`; only one is open at a time. The F5 library picks a
+  factory sound or colourway. Shared F8 preset save/rename/delete actions remain available.
 - The keyboard strip and status meters always remain visible.
+- The built-in `mono` skin remains immutable. DRIFT supplies its own `DRIFT WEATHER` header and
+  ASCII-safe isobar, grain and cursor glyphs, and maps age/isobar levels onto the shared grayscale
+  semantic styles.
 
 ## Tests
 

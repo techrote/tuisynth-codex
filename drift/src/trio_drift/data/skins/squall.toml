@@ -1,0 +1,78 @@
+schema = "md-editor-theme/1.1"
+id = "squall"
+name = "SQUALL"
+instrument = "drift"
+fps = 24
+
+[palette]
+bg = "#07121b"
+fg = "#d8eff5"
+muted = "#62818c"
+storm = "#34a7bc"
+foam = "#9fe9ec"
+lightning = "#fff0a8"
+deep = "#173846"
+sea = "#267b91"
+young = "#478ea2"
+mid = "#66c4d0"
+old = "#b8eee8"
+white = "#eefbff"
+black = "#050b10"
+red = "#ef806b"
+
+[styles]
+background = { fg = "fg", bg = "bg" }
+text = { fg = "fg", bg = "bg" }
+muted = { fg = "muted", bg = "bg" }
+border = { fg = "sea", bg = "bg" }
+title = { fg = "foam", bg = "bg", bold = true }
+heading = { fg = "lightning", bg = "bg", bold = true }
+accent = { fg = "storm", bg = "bg", bold = true }
+status = { fg = "foam", bg = "bg" }
+warning = { fg = "lightning", bg = "bg", bold = true }
+error = { fg = "red", bg = "bg", bold = true }
+focused = { fg = "black", bg = "lightning", bold = true }
+hover = { fg = "foam", bg = "deep" }
+pressed = { fg = "black", bg = "foam", bold = true }
+selected = { fg = "black", bg = "foam", bold = true }
+disabled = { fg = "muted", bg = "bg" }
+key_white = { fg = "black", bg = "#e5f1ef" }
+key_black = { fg = "foam", bg = "#15242a" }
+key_pressed = { fg = "black", bg = "lightning", bold = true }
+meter_low = { fg = "sea", bg = "bg" }
+meter_mid = { fg = "storm", bg = "bg" }
+meter_high = { fg = "lightning", bg = "bg", bold = true }
+grain_age_0 = { fg = "young", bg = "bg" }
+grain_age_1 = { fg = "mid", bg = "bg" }
+grain_age_2 = { fg = "foam", bg = "bg" }
+grain_age_3 = { fg = "old", bg = "bg" }
+grain_age_4 = { fg = "lightning", bg = "bg", bold = true }
+isobar_0 = { fg = "#173846", bg = "bg" }
+isobar_1 = { fg = "#267b91", bg = "bg" }
+isobar_2 = { fg = "#34a7bc", bg = "bg" }
+isobar_3 = { fg = "#66c4d0", bg = "bg" }
+isobar_4 = { fg = "#9fe9ec", bg = "bg" }
+
+[glyphs]
+density = [" ", ".", ":", "-", "=", "+", "*", "#"]
+grain = [".", ":", "o", "O", "●"]
+isobar = [".", "~", "≈"]
+cursor = "@"
+frame = "square"
+
+[ramps]
+grain_age = ["young", "mid", "foam", "old", "lightning"]
+isobar = ["#173846", "#267b91", "#34a7bc", "#66c4d0", "#9fe9ec"]
+
+[art]
+logo = "~ S Q U A L L ~"
+isobars = "spiral rain bands / north-east pressure front"
+grains = "salt spray · lightning · fresh cloud"
+cursor = "eye of storm · @"
+
+[fallbacks.ascii.glyphs]
+density = [" ", ".", ":", "+", "#"]
+grain = [".", ":", "o", "O", "#"]
+isobar = [".", "-", "="]
+cursor = "@"
+frame = "ascii"
