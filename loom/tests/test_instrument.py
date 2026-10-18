@@ -279,6 +279,43 @@ def test_event_voices_use_the_shared_engine_seed() -> None:
     assert not np.array_equal(render(19), render(20))
 
 
+def test_surface_plucks_receive_the_same_per_voice_modulation_as_keyboard_notes() -> None:
+    from trio_kit.modulation import ModulationConfig
+
+    params = loom_registry().validate({
+        "body.type": 0,
+        "body.mix": 0,
+        "sym.mix": 0,
+        "fx.reverb.mix": 0,
+        "master.level": 1,
+        "master.drive": 0,
+    })
+
+    def render(amount: float) -> tuple[np.ndarray, float]:
+        instrument = LoomInstrument(seed=73)
+        engine = Engine(instrument, max_voices=8, initial_params=params, seed=73)
+        modulation = ModulationConfig.defaults().to_dict()
+        modulation["slots"][0] = {
+            "source": "velocity", "destination": "exc.hardness", "amount": amount,
+        }
+        engine.set_extras({"modulation": modulation})
+        engine.push(InstrumentEvent("pluck", (60, 1.0, 0)))
+        try:
+            audio = engine.render(4_096)
+            event_voice = instrument._event_voices[0]
+            delta = engine.modulation._voice_smoothed[(event_voice.note_id, 0, "exc.hardness")]
+            return audio, delta
+        finally:
+            engine.close()
+
+    unmodulated, baseline_delta = render(0.0)
+    modulated, velocity_delta = render(1.0)
+    assert baseline_delta == 0.0
+    assert velocity_delta == pytest.approx(0.5)
+    assert np.isfinite(modulated).all()
+    assert float(np.max(np.abs(modulated - unmodulated))) > 1e-5
+
+
 def test_released_string_finishes_after_it_stays_below_minus_ninety_dbfs() -> None:
     registry = loom_registry()
     params = ParamSnapshot(registry.validate({"str.decay": 0.2, "str.release": 0.05}))

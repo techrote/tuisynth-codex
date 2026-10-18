@@ -63,31 +63,61 @@ arp ordering for each mode with seeded random; pattern round-trip through preset
 
 ### Sources
 
-`LFO1`-`LFO3` (sine, triangle, saw, square, sample&hold, smooth random; rate 0.01-20 Hz or
-tempo-synced divisions; phase 0-1; per-voice or global), `ModEnv` (ADSR), `velocity`,
+`LFO1`-`LFO3` (sine, triangle, saw, square, sample&hold, smooth random; free rate 0.01-20 Hz or
+tempo-synced divisions that follow tempo up to 32 Hz at 240 BPM and 1/32; phase 0-1; per-voice
+or global), `ModEnv` (ADSR), `velocity`,
 `modwheel`, `keytrack`, `note-random` (per-note seeded constant), `pitchbend`.
+
+`extras.modulation` stores exactly three LFO objects (`waveform`, free `rate`, `sync`, `division`,
+`phase`, `mode`, `seed`), ModEnv ADSR times (`attack`, `decay`, `sustain`, `release`), exactly eight
+slots (`source`, `destination`, bipolar `amount`) and a `rack` object (`order`, `units`). Every
+source is normalized to -1..1: velocity and modwheel map their 0..1 inputs to -1..1, keytrack is
+clipped around MIDI 60, pitchbend is normalized to 12 semitones, note-random is seeded per note,
+and LFO/FX sources use their block mean. Voice-mode LFOs and per-note sources are evaluated per
+voice; the three shared LFOs, modwheel, pitchbend and effect LFOs are global.
 
 ### Matrix
 
 8 slots: `source -> destination` with bipolar amount -1..1. Destinations are any parameter
 with `modulatable=True` in the instrument registry plus FX parameters. Modulation is applied at
-control rate (once per 256-frame block) to a copy of the `ParamSnapshot`, smoothed over the
-block, and clamped to the parameter range. Per-voice sources apply to per-voice params only;
-global sources may target anything. Stored in presets under `extras.modulation`.
+control rate (once per 256-frame block) to a copy of the `ParamSnapshot`, smoothed with a 20 ms
+one-pole transition, and clamped to the parameter range. A route adds
+`source * amount * (maximum - minimum) / 2` to the parameter's base value. Destinations must be
+known, continuous and marked modulatable; `ParamSpec.modulation_scope` is `global`, `voice` or
+`both`. Voice sources apply to voice/both parameters only; global sources may target any
+modulatable parameter. Validation rejects voice-source routes to global-only parameters or FX rack
+destinations, because they are consumed only by a shared instrument/effect bus. Per-voice routes initialize from the note-start source value so excitation
+parameters receive modulation at note-on, then smooth subsequent control changes over 20 ms.
+Multiple global and per-voice routes to one destination sum before one final clamp. LOOM keyboard,
+MIDI and surface-triggered string voices share the same note-scoped modulation state. DRIFT's
+grain controls and ADSR parameters expose per-voice destinations where each note stream consumes
+them. FX routes use the same summed, smoothed rule with their rack-owned parameter ranges. The
+matrix is empty by default and round-trips in presets under `extras.modulation`. Interactive matrix
+and rack edits commit together at an internal block boundary. An edit to rack settings preserves
+unrelated matrix LFO phase and route smoothing state. DRIFT's `wind.howl` is a global destination
+because its processor adds howl to the shared formant bus.
 
 ### Post-processing rack (modulation oscillators inside effects)
 
 Order (each with bypass and mix, user-reorderable): `tremolo/autopan` (own LFO),
 `ring-mod` (sine carrier 0.5-2,000 Hz, carrier frequency itself LFO-modulatable),
-`phaser` (4/8 all-pass stages, own LFO), `tape` (wow 0.5 Hz + flutter 8 Hz modulated delay,
-soft saturation), then the existing shared chorus, delay and reverb. Each rack LFO is also
-exposed as a matrix source. All rack units are block-vectorised and stateful across blocks.
+`phaser` (4/8 all-pass stages, own LFO whose sweep reaches a static 250 Hz at depth 0), `tape` (wow 0.5 Hz + flutter 8 Hz modulated delay,
+soft saturation), then the existing shared chorus, delay and reverb. Default order is as written;
+the four new units are bypassed by default and existing instrument effects keep their prior
+enabled state and order. Each rack LFO is also exposed as a matrix source. All rack units are
+block-vectorised and stateful across blocks. Rack mix is a 0..1 wet blend and is editable on the
+pedalboard by dragging its mix row or scrolling over the unit; `,`/`.` decrement/increment the
+selected unit mix.
 
 ### UI
 
 A `MOD` area in each instrument's own style, opened/focused with `Shift+F4`: a matrix grid
-(sources as rows, slots as columns) with ASCII patch cords, and an FX "pedalboard" drawn as ASCII art boxes whose
-order can be changed by dragging. Keyboard twin for every action.
+(all sources as rows, slots as columns) with ASCII patch cords, and an FX "pedalboard" drawn as
+ASCII art boxes whose order can be changed by dragging. Mouse edits routes, amounts, unit mix,
+bypass, clear and order; keyboard twins are `R`/arrows for source, `T` for destination,
+`+`/`-`/PageUp/PageDown for amount, Delete for clear, `B`/Space for bypass, `[`/`]` for order,
+and `,`/`.` for mix. Press `V` to switch keyboard focus between the matrix and rack; rack focus
+uses Left/Right to select any of the seven units before changing its mix, bypass or order.
 
 ### Tests
 

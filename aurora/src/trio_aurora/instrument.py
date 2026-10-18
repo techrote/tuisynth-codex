@@ -496,30 +496,40 @@ class AuroraInstrument:
                 self._old_tables = None
                 self._condition.notify_all()
 
-    def process_bus(self, buffer: np.ndarray, params: ParamSnapshot) -> np.ndarray:
+    def process_pre_fx(self, buffer: np.ndarray, params: ParamSnapshot) -> np.ndarray:
+        samples = np.asarray(buffer, dtype=np.float32)
+        if samples.ndim != 2 or samples.shape[1] != 2:
+            raise ValueError("AURORA bus input must be stereo")
+        return samples
+
+    def process_fx_unit(self, name: str, buffer: np.ndarray, params: ParamSnapshot) -> np.ndarray:
+        samples = np.asarray(buffer, dtype=np.float32)
+        if name not in {"chorus", "delay", "reverb"} or not np.isfinite(samples).all():
+            return samples
+        if name == "chorus":
+            if self._chorus is None:
+                return samples
+            self._chorus.set_parameters(mix=float(params["fx.chorus.mix"]))
+            return self._chorus.process(samples)
+        if name == "delay":
+            if self._delay is None:
+                return samples
+            self._delay.set_parameters(delay_seconds=float(params["fx.delay.time"]), feedback=float(params["fx.delay.fb"]), mix=float(params["fx.delay.mix"]))
+            return self._delay.process(samples)
+        if self._reverb is None:
+            return samples
+        self._reverb.set_parameters(size=float(params["fx.reverb.size"]), damp=float(params["fx.reverb.damp"]), mix=float(params["fx.reverb.mix"]))
+        return self._reverb.process(samples)
+
+    def process_post_fx(self, buffer: np.ndarray, params: ParamSnapshot) -> np.ndarray:
         samples = np.asarray(buffer, dtype=np.float32)
         if samples.ndim != 2 or samples.shape[1] != 2:
             raise ValueError("AURORA bus input must be stereo")
         if not np.isfinite(samples).all():
             return samples
-        chorus = self._chorus
-        delay = self._delay
-        reverb = self._reverb
-        if chorus is None or delay is None or reverb is None:
+        if self._chorus is None or self._delay is None or self._reverb is None:
             return samples
-
-        chorus.set_parameters(mix=float(params["fx.chorus.mix"]))
-        delay.set_parameters(
-            delay_seconds=float(params["fx.delay.time"]),
-            feedback=float(params["fx.delay.fb"]),
-            mix=float(params["fx.delay.mix"]),
-        )
-        reverb.set_parameters(
-            size=float(params["fx.reverb.size"]),
-            damp=float(params["fx.reverb.damp"]),
-            mix=float(params["fx.reverb.mix"]),
-        )
-        effected = reverb.process(delay.process(chorus.process(samples)))
+        effected = samples
         drive = float(params["master.drive"])
         if drive > 0.0:
             shaped = np.tanh(effected * (1.0 + 9.0 * drive)) / math.tanh(1.0 + 9.0 * drive)
@@ -528,6 +538,13 @@ class AuroraInstrument:
         self._advance_crossfade(len(samples))
         self._last_voice_rms = float(np.sqrt(np.mean(np.square(output, dtype=np.float64)))) if len(output) else 0.0
         return output
+
+    def process_bus(self, buffer: np.ndarray, params: ParamSnapshot) -> np.ndarray:
+        """Compatibility wrapper retaining the original instrument-bus API."""
+        output = self.process_pre_fx(buffer, params)
+        for name in ("chorus", "delay", "reverb"):
+            output = self.process_fx_unit(name, output, params)
+        return self.process_post_fx(output, params)
 
     def on_event(self, name: str, payload: tuple[float | int | str, ...]) -> None:
         if name == "harmonics":

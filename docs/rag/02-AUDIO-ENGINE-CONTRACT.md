@@ -19,8 +19,10 @@ status: authority
 ## Parameters (TRIO-002)
 
 `ParamSpec(key, label, unit, minimum, maximum, default, kind, choices=None, curve="linear",
-modulatable=False, group="")` where `kind` is `continuous`, `discrete` (integer steps) or
-`choice` (index into `choices`). `curve` is `linear`, `log` (minimum > 0) or `exp`.
+modulatable=False, group="", modulation_scope="global")` where `kind` is `continuous`,
+`discrete` (integer steps) or `choice` (index into `choices`). `curve` is `linear`, `log`
+(minimum > 0) or `exp`. `modulation_scope` is `global`, `voice` or `both`; it is valid only
+when `modulatable=True`. A modulatable destination must be continuous.
 
 - `ParamRegistry` holds specs in declaration order; keys are unique dotted names
   (`amp.a`, `fx.reverb.mix`). It provides `to_unit(key, value) -> 0..1`, `from_unit(key, u)`,
@@ -86,6 +88,12 @@ Immutable dataclasses: `NoteOn(note_id, pitch, velocity, source, frame=0)`,
 - `extras.sequencer` is validated by shared preset plumbing and removed before private instrument
   extras reach `Instrument.set_extras()`. `Engine.get_extras()` merges the instrument data with the
   shared sequencer state so preset dirty tracking, save/load and the UI see one complete object.
+- `extras.modulation` is validated by the same shared preset boundary and removed before private
+  instrument extras reach `Instrument.set_extras()`. It carries three LFO configurations, a ModEnv
+  ADSR, eight matrix routes and the full seven-unit FX rack order/settings. The complete object is
+  returned by `Engine.get_extras()` with the instrument data and sequencer state. Interactive
+  modulation/rack edits are staged together and committed at the next internal block boundary;
+  changing a rack control preserves unrelated matrix LFO phase and route smoothing state.
 - `Transport` updates the sequencer scheduler at its sample frame. `SequencerProcessor` runs once
   per internal block before voice dispatch, computes anchored step boundaries, adds generated
   `NoteOn`/`NoteOff` events with block-relative frame offsets, and tracks each generated note ID
@@ -149,10 +157,16 @@ Immutable dataclasses: `NoteOn(note_id, pitch, velocity, source, frame=0)`,
 - Per block: drain events (applying `ParamSet`s into a new `ParamSnapshot`), split at event
   frames, render voices and run the instrument bus for each segment, assemble the block, then
   run the `MasterBus` once. Sequencer-generated events join the same sample-offset dispatch path.
+  The modulation processor evaluates global sources once per block and applies the resulting
+  snapshot before voice rendering; per-note sources are added to a temporary snapshot for each
+  active voice. A per-note source cannot target a global-only parameter or a shared FX destination,
+  since neither is consumed by a per-note path. The shared post-tone `FxRack` then runs its ordered inserts between instrument
+  pre-effect and post-effect callbacks, including the original chorus/delay/reverb callbacks.
   Immediately after queued params and preset extras apply, the engine
-  calls an optional `instrument.on_block_boundary(snapshot)` exactly once before event dispatch
-  or voice rendering. This is the safe point for an instrument to commit worker-produced state;
-  `process_bus` remains segment-scoped. This keeps master limiter statistics aligned with blocks.
+  calls an optional `instrument.on_block_boundary(snapshot)` exactly once after global modulation
+  and before event dispatch or voice rendering. This is the safe point for an instrument to commit
+  worker-produced state using the same effective values its bus and voices receive; `process_bus`
+  remains segment-scoped. This keeps master limiter statistics aligned with blocks.
 - `OfflineEngine` is the same engine with no device; used by tests and `--render`.
 - Randomness only through `numpy.random.Generator` instances seeded from `(seed, voice
   counter)`, so equal seeds and equal event streams give bit-identical float32 output on the
@@ -174,11 +188,12 @@ tested for continuity: processing one signal in random chunk sizes equals proces
 |---|---|
 | `Adsr` | Attack is a linear ramp; decay and release are exponential approaches whose stated time is the time to cover 99 % of the distance. Closed-form per stage, split at stage boundaries inside a block. `gate_on(velocity)`, `gate_off()`, `finished`. |
 | `Biquad` | RBJ-cookbook low-pass / band-pass / high-pass / peaking coefficients; processing with `scipy.signal.lfilter(b, a, x, zi=state)`; parameter changes settle over 5 ms, with coefficients evaluated in fixed spans no longer than 32 frames. Stable for cutoff 20 Hz-0.45 x sample rate and resonance up to Q 20. |
-| `Lfo` | sine, triangle, saw, square, sample-and-hold, smooth random (seeded); vectorised phase; rate 0.01-20 Hz; outputs -1..1. |
+| `Lfo` | sine, triangle, saw, square, sample-and-hold, smooth random (seeded); vectorised phase; free/effect rate 0.01-20 Hz, with an explicit 32 Hz ceiling for tempo-synced matrix LFOs; outputs -1..1. |
 | `DelayLine` | Circular buffer, fractional (linear-interpolated) read. **Chronological**: after writing 0..7, a read of delay 4 returns 4,5,6,7 (MOD-004 regression test). Feedback delays require delay >= one block so a block is computed from past samples only. |
 | `Chorus` | Two modulated `DelayLine` taps (7-20 ms, LFO 0.1-6 Hz, opposite phases L/R), mix. |
 | `StereoDelay` | Ping-pong feedback delay 60 ms-2 s, feedback 0-0.9 with a low-pass in the loop, mix. |
 | `Reverb` | 8-line feedback delay network with a Householder matrix, all line lengths > `BLOCK` (so each block is computed from past samples), per-line one-pole damping via `lfilter`, size 0.2-1.6 scales lengths/decay, normalized damp 0-1 maps damping cutoff from 18 kHz to 45 Hz, mix. Must decay to below -90 dBFS after input stops for size <= 1.6. |
+| `FxRack` (TRIO-016) | Ordered post-tone rack: tremolo/autopan, ring modulation, 4/8-stage phaser, tape wow/flutter/saturation, then instrument chorus/delay/reverb callbacks. Four new units default bypassed; rack settings/order round-trip through `extras.modulation`. New units are stateful and run from block vectors. |
 
 All DSP `process` methods accept `0..BLOCK` frames and return float32 output; signal processors
 preserve their configured channel layout and the stereo effects are two-channel. `Adsr(sample_rate, attack, decay, sustain, release)`
@@ -188,8 +203,11 @@ gain_db)` preserves mono/multichannel layout; `kind` accepts `lowpass`, `bandpas
 `peaking` (or `lp`, `bp`, `hp`, `peak` aliases), `q` is 0.05..20, and peaking gain is
 -36..+36 dB. Parameter changes begin on the next process call and settle over 5 ms.
 
-`Lfo(sample_rate, rate, waveform, seed)` returns mono samples; waveform names are `sine`,
-`triangle`, `saw`, `square`, `sample_hold`, and `smooth_random`. `DelayLine(max_delay_samples,
+`Lfo(sample_rate, rate, waveform, seed, max_rate=20)` returns mono samples; modulation matrix
+LFOs use `max_rate=32`, where 240 BPM at a 1/32 division reaches 32 Hz for global or per-voice
+routes.
+Waveform names are `sine`, `triangle`, `saw`, `square`, `sample_hold`, and `smooth_random`.
+`DelayLine(max_delay_samples,
 channels=1)` exposes `write(buffer)`, `read(delay_samples, frames)`, and causal
 `process(buffer, delay_samples)`. Reads are chronological: writing 0..7 then reading delay 4
 for 4 frames yields 4..7; fractional delays interpolate adjacent samples. `Chorus` uses a

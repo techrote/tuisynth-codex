@@ -54,7 +54,7 @@ def _preset_library(spec: InstrumentSpec, data_dir: str | None) -> PresetLibrary
         data_dir=data_dir,
         factory_package=spec.factory_package,
         factory_dir=spec.factory_presets_dir,
-        extras_validator=lambda extras: validate_shared_extras(extras, spec.extras_validator),
+        extras_validator=lambda extras: validate_shared_extras(extras, spec.extras_validator, registry),
     )
 
 
@@ -85,7 +85,7 @@ def _make_parser(command: str, version: str) -> argparse.ArgumentParser:
 
 
 def _snapshot_screens(spec: InstrumentSpec) -> tuple[str, ...]:
-    extra = ("sequencer",) if spec.on_screen is not None else ()
+    extra = ("sequencer", "modulation") if spec.on_screen is not None else ()
     return ("main", "help", "palette", "skins", "midi", "presets", *extra, *spec.screen_names)
 
 

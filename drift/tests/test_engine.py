@@ -23,7 +23,8 @@ from trio_drift import (
     window_values,
 )
 from trio_kit.engine import Engine
-from trio_kit.events import NoteOn
+from trio_kit.events import ModWheel, NoteOn
+from trio_kit.modulation import ModulationConfig
 from trio_kit.params import ParamSnapshot
 
 
@@ -276,6 +277,64 @@ def test_factory_preset_engine_render_is_finite_audible_and_limited(preset: obje
         assert np.max(np.abs(rendered)) <= 0.966
         assert float(np.max(np.abs(rendered))) > 1e-5
         assert engine.telemetry().instrument["active_grains"] <= int(preset.params["gr.max"])
+    finally:
+        engine.close()
+
+
+def test_drift_per_voice_routes_change_grain_voice_rendering() -> None:
+    instrument = DriftInstrument(seed=82)
+    engine = Engine(instrument, sample_rate=SR, seed=82, max_voices=6, initial_params=instrument.registry.defaults())
+    modulation = ModulationConfig.defaults().to_dict()
+    modulation["slots"][0] = {
+        "source": "velocity", "destination": "amp.a", "amount": -1.0,
+    }
+    engine.set_extras({"modulation": modulation})
+    assert instrument.registry["amp.a"].modulation_scope == "both"
+    assert any(
+        spec.modulatable and spec.modulation_scope in {"voice", "both"}
+        for spec in instrument.registry
+    )
+    engine.push(NoteOn(1, 60, 1.0, "test"))
+    try:
+        modulated = engine.render(4_096)
+    finally:
+        engine.close()
+
+    baseline = Engine(DriftInstrument(seed=82), sample_rate=SR, seed=82, max_voices=6)
+    baseline.push(NoteOn(1, 60, 1.0, "test"))
+    try:
+        unmodulated = baseline.render(4_096)
+    finally:
+        baseline.close()
+    assert np.isfinite(modulated).all()
+    assert float(np.max(np.abs(modulated - unmodulated))) > 1e-5
+
+
+def test_drift_shared_howl_rejects_voice_source_routes() -> None:
+    engine = Engine(DriftInstrument(seed=84), sample_rate=SR, seed=84, max_voices=6)
+    modulation = ModulationConfig.defaults().to_dict()
+    modulation["slots"][0] = {"source": "velocity", "destination": "wind.howl", "amount": 1.0}
+    try:
+        assert engine.registry["wind.howl"].modulation_scope == "global"
+        with pytest.raises(ValueError, match="global-only destination"):
+            engine.set_extras({"modulation": modulation})
+    finally:
+        engine.close()
+
+
+def test_drift_global_modulation_updates_the_block_boundary_formant_target() -> None:
+    instrument = DriftInstrument(seed=83)
+    engine = Engine(instrument, sample_rate=SR, seed=83, max_voices=6)
+    modulation = ModulationConfig.defaults().to_dict()
+    modulation["slots"][0] = {
+        "source": "modwheel", "destination": "field.x", "amount": 1.0,
+    }
+    engine.set_extras({"modulation": modulation})
+    engine.push(ModWheel(1.0))
+    try:
+        engine.render(24_000)
+        assert instrument._params["field.x"] == pytest.approx(0.5)
+        assert instrument._vowel_target == pytest.approx(1.6)
     finally:
         engine.close()
 

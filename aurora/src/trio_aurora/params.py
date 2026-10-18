@@ -29,18 +29,18 @@ def aurora_registry() -> ParamRegistry:
             ParamSpec("spec.noise", "Noise floor", "", 0, 1, 0, group="Spectrum"),
             ParamSpec("spec.seed", "Phase seed", "", 0, 9999, 1, kind="discrete", group="Spectrum"),
             ParamSpec("osc.octave", "Octave", "oct", -2, 2, 0, kind="discrete", group="Oscillator"),
-            ParamSpec("osc.detune", "Detune", "cents", 0, 50, 6, group="Oscillator"),
-            ParamSpec("osc.width", "Stereo width", "", 0, 1, 0.85, group="Oscillator"),
+            ParamSpec("osc.detune", "Detune", "cents", 0, 50, 6, modulatable=True, modulation_scope="voice", group="Oscillator"),
+            ParamSpec("osc.width", "Stereo width", "", 0, 1, 0.85, modulatable=True, modulation_scope="voice", group="Oscillator"),
             ParamSpec("amp.a", "Attack", "s", 0.001, 20, 1.8, curve="log", group="Amplitude"),
             ParamSpec("amp.d", "Decay", "s", 0.01, 20, 1.5, curve="log", group="Amplitude"),
             ParamSpec("amp.s", "Sustain", "", 0, 1, 0.8, group="Amplitude"),
             ParamSpec("amp.r", "Release", "s", 0.01, 30, 4, curve="log", group="Amplitude"),
-            ParamSpec("amp.vel", "Velocity", "", 0, 1, 0.4, group="Amplitude"),
+            ParamSpec("amp.vel", "Velocity", "", 0, 1, 0.4, modulatable=True, modulation_scope="voice", group="Amplitude"),
             ParamSpec("flt.mode", "Filter mode", "", 0, 2, 0, kind="choice", choices=FILTER_CHOICES, group="Filter"),
-            ParamSpec("flt.cut", "Cutoff", "Hz", 20, 20_000, 5_000, curve="log", group="Filter"),
-            ParamSpec("flt.res", "Resonance", "", 0, 0.95, 0.1, group="Filter"),
-            ParamSpec("flt.env", "Envelope depth", "", -1, 1, 0.2, group="Filter"),
-            ParamSpec("flt.key", "Key tracking", "", 0, 1, 0.3, group="Filter"),
+            ParamSpec("flt.cut", "Cutoff", "Hz", 20, 20_000, 5_000, curve="log", modulatable=True, modulation_scope="voice", group="Filter"),
+            ParamSpec("flt.res", "Resonance", "", 0, 0.95, 0.1, modulatable=True, modulation_scope="voice", group="Filter"),
+            ParamSpec("flt.env", "Envelope depth", "", -1, 1, 0.2, modulatable=True, modulation_scope="voice", group="Filter"),
+            ParamSpec("flt.key", "Key tracking", "", 0, 1, 0.3, modulatable=True, modulation_scope="voice", group="Filter"),
             ParamSpec("fenv.a", "Filter attack", "s", 0.001, 20, 2.5, curve="log", group="Filter envelope"),
             ParamSpec("fenv.d", "Filter decay", "s", 0.01, 20, 2, curve="log", group="Filter envelope"),
             ParamSpec("fenv.s", "Filter sustain", "", 0, 1, 0.5, group="Filter envelope"),
@@ -49,13 +49,13 @@ def aurora_registry() -> ParamRegistry:
             ParamSpec("lfo.depth", "LFO depth", "", 0, 1, 0.2, group="Motion"),
             ParamSpec("lfo.wave", "LFO wave", "", 0, 2, 2, kind="choice", choices=LFO_WAVES, group="Motion"),
             ParamSpec("lfo.tgt", "LFO target", "", 0, 3, 1, kind="choice", choices=LFO_TARGETS, group="Motion"),
-            ParamSpec("fx.chorus.mix", "Chorus", "", 0, 1, 0.2, group="Space"),
-            ParamSpec("fx.delay.time", "Delay time", "s", 0.06, 2, 0.42, curve="log", group="Space"),
-            ParamSpec("fx.delay.fb", "Delay feedback", "", 0, 0.9, 0.35, group="Space"),
-            ParamSpec("fx.delay.mix", "Delay", "", 0, 1, 0.15, group="Space"),
-            ParamSpec("fx.reverb.size", "Reverb size", "", 0.2, 1.6, 0.85, curve="log", group="Space"),
-            ParamSpec("fx.reverb.damp", "Reverb damping", "", 0, 1, 0.4, group="Space"),
-            ParamSpec("fx.reverb.mix", "Reverb", "", 0, 1, 0.35, group="Space"),
+            ParamSpec("fx.chorus.mix", "Chorus", "", 0, 1, 0.2, modulatable=True, group="Space"),
+            ParamSpec("fx.delay.time", "Delay time", "s", 0.06, 2, 0.42, curve="log", modulatable=True, group="Space"),
+            ParamSpec("fx.delay.fb", "Delay feedback", "", 0, 0.9, 0.35, modulatable=True, group="Space"),
+            ParamSpec("fx.delay.mix", "Delay", "", 0, 1, 0.15, modulatable=True, group="Space"),
+            ParamSpec("fx.reverb.size", "Reverb size", "", 0.2, 1.6, 0.85, curve="log", modulatable=True, group="Space"),
+            ParamSpec("fx.reverb.damp", "Reverb damping", "", 0, 1, 0.4, modulatable=True, group="Space"),
+            ParamSpec("fx.reverb.mix", "Reverb", "", 0, 1, 0.35, modulatable=True, group="Space"),
             ParamSpec("master.level", "Master level", "", 0, 1, 0.75, group="Master"),
             ParamSpec("master.drive", "Master drive", "", 0, 1, 0.1, group="Master"),
         )
@@ -66,7 +66,9 @@ def validate_extras(extras: dict[str, Any]) -> Mapping[str, Any]:
     """Validate harmonic painting data and pad shorter profiles to 64 bars."""
     if not isinstance(extras, Mapping):
         raise ValueError("instrument extras must be an object")
-    unknown = set(extras) - {"harmonics"}
+    # The shared shell/engine owns these fields. Accept them here as well so
+    # callers that validate an entire preset extras object remain compatible.
+    unknown = set(extras) - {"harmonics", "sequencer", "modulation"}
     if unknown:
         raise ValueError(f"unknown AURORA extra {sorted(unknown)[0]!r}")
     raw = extras.get("harmonics", DEFAULT_HARMONICS)

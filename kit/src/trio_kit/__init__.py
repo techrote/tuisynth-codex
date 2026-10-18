@@ -30,7 +30,7 @@ from trio_kit.engine import (
     VoiceManager,
     open_backend,
 )
-from trio_kit.dsp import Adsr, Biquad, Chorus, DelayLine, Lfo, Reverb, StereoDelay
+from trio_kit.dsp import Adsr, Biquad, Chorus, DelayLine, FxRack, Lfo, Reverb, StereoDelay
 from trio_kit.input import (
     CcLearnMap,
     FakeMidiBackend,
@@ -46,6 +46,7 @@ from trio_kit.input import (
     parse_midi,
 )
 from trio_kit.params import ParamError, ParamRegistry, ParamSnapshot, ParamSpec, ParamState, ParamWarning
+from trio_kit.modulation import LfoConfig, ModSlot, ModulationConfig, ModulationProcessor
 from trio_kit.preset import (
     Preset,
     PresetError,
@@ -76,13 +77,18 @@ __all__ = [
     "EventQueue",
     "FakeMidiBackend",
     "FakeMidiPort",
+    "FxRack",
     "Instrument",
     "InstrumentEvent",
     "KeyboardPiano",
     "MAX_EVENT_QUEUE",
     "Lfo",
+    "LfoConfig",
     "MasterBus",
     "ModWheel",
+    "ModSlot",
+    "ModulationConfig",
+    "ModulationProcessor",
     "MidiInput",
     "MidiMapWarning",
     "MidiNoteMap",

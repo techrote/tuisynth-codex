@@ -199,16 +199,21 @@ class SequenceConfig:
         )
 
 
-def validate_extras(extras: object, instrument_validator=None) -> dict[str, object]:
-    """Validate shared sequencer data alongside an instrument's private extras."""
+def validate_extras(extras: object, instrument_validator=None, registry=None) -> dict[str, object]:
+    """Validate shared sequencer/modulation state and instrument-private extras."""
     if not isinstance(extras, Mapping):
         raise ValueError("preset extras must be an object")
     raw = dict(extras)
     shared = SequenceConfig.from_dict(raw.pop("sequencer", {}))
+    # Imported lazily to keep the modulation source module independent of the
+    # sequencer scheduler while maintaining one public extras entry point.
+    from trio_kit.modulation import validate_modulation
+
+    modulation = validate_modulation(raw.pop("modulation", {}), registry=registry)
     private = instrument_validator(raw) if instrument_validator is not None else raw
     if not isinstance(private, Mapping):
         raise ValueError("instrument extras validator must return an object")
-    return {**dict(private), "sequencer": shared.to_dict()}
+    return {**dict(private), "sequencer": shared.to_dict(), "modulation": modulation}
 
 
 class Arpeggiator:
