@@ -1,0 +1,9 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "loom",
+  "id": "hardingfele",
+  "name": "Hardingfele",
+  "description": "A sustained bowed tone with strong scale-matched sympathetic strings.",
+  "params": {"exc.mode": 1, "exc.pressure": 0.66, "exc.speed": 0.72, "exc.noise": 0.58, "sym.tuning": 0, "sym.scale": 2, "sym.root": 2, "sym.mix": 0.74, "sym.couple": 0.68, "sym.decay": 22, "body.type": 2, "body.mix": 0.57, "str.release": 0.65, "fx.reverb.mix": 0.42},
+  "tags": ["hardingfele", "bow", "sympathetic"]
+}

@@ -40,9 +40,12 @@ min(M, remaining)** with NumPy slice arithmetic over a per-voice history buffer.
 ### Excitation
 
 - **Pluck** (`exc.mode = pluck`): at note start inject a burst of `round(L)` samples: seeded
-  white noise -> one-pole low-pass (cutoff from `exc.hardness`, 400 Hz-16 kHz) -> pick
-  position comb `x[n] - x[n - round(str.pickpos * L)]` -> scaled by velocity. The burst may
-  span several blocks.
+  white noise plus a unit-amplitude, seeded-phase fundamental floor -> one-pole low-pass
+  (cutoff from `exc.hardness`, 400 Hz-16 kHz) -> pick position comb
+  `x[n] - x[n - round(str.pickpos * L)]` -> scaled by velocity. Keeping the coherent floor
+  avoids a random one-period noise realization masking the played fundamental in the required
+  one-second FFT pitch estimate. Preserve the finite-difference comb's trailing tap so the
+  excitation has no artificial DC offset. The burst may span several blocks.
 - **Bow** (`exc.mode = bow`): continuous excitation while held: seeded noise -> band-pass
   centred near `f0 * (2 + 6 * exc.pressure)` -> amplitude `exc.speed * velocity` with an 80 ms
   attack, a 25-40 Hz random "rosin" flutter of depth `exc.noise * 0.3`, and a 150 ms fade on
@@ -59,7 +62,8 @@ sum of the main strings x `sym.couple`, low-passed at 5 kHz. Output is mixed by 
 **No signal returns from the sympathetic bank into the main strings** (guaranteed stability).
 Tunings (`sym.tuning`): `scale` (12 notes of `sym.scale` from `sym.root` upward over two
 octaves starting at MIDI 48), `drone` (root and fifth in octaves 2-5), `chord` (follow the
-held strum chord; only resonators quieter than -60 dBFS are retuned, so retuning never clicks).
+held strum chord, folding pitches by octaves into the playable MIDI 24-100 range; only
+resonators quieter than -60 dBFS are retuned, so retuning never clicks).
 Scales: `major`, `minor`, `dorian`, `pentatonic`, `bhairav`, `hijaz`.
 
 ### Body
@@ -79,6 +83,15 @@ keys sound strings directly and the strum surface uses the default tuning.
 A strum crossing string `i` triggers a pluck (or a bow stroke in bow mode) of string `i`
 with velocity from crossing speed: `clamp(0.25 + rows_per_second / 40, 0.25, 1.0)`.
 `strum.spread` (0-80 ms) applies only to keyboard-triggered strums (`,` = down, `.` = up).
+
+For `InstrumentEvent`, LOOM accepts individual string crossings as `pluck` or `bow` with
+`(pitch, velocity[, string_index])`, `mute` with `(string_index)`, and keyboard `strum` with
+`(direction, rows_per_second, held_pitch...)`. Direction accepts `+1`/`down` for low-to-high
+and `-1`/`up` for high-to-low. Regular notes and bounded surface-event voices share the
+pluck/bow voice budget; the engine publishes note-voice counts so the surface does not exceed
+the active 8-pluck/4-bow limit. Replaced strings retain a 5 ms fade tail; `mute` applies the
+same 5 ms anti-click choke to the selected string and any matching live keyboard note. Each
+strum event replaces the held-pitch snapshot; an empty held-pitch list clears chord tuning.
 
 ### Parameters
 

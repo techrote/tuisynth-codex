@@ -140,6 +140,9 @@ class Engine:
         self._backend_name = "offline"
         self._last_error: str | None = None
         self._closed = False
+        seed_setter = getattr(instrument, "set_engine_seed", None)
+        if callable(seed_setter):
+            seed_setter(seed)
         prepare = getattr(instrument, "prepare", None)
         if callable(prepare):
             prepare(sample_rate, block)
@@ -210,6 +213,18 @@ class Engine:
             except Exception as error:
                 self._last_error = f"instrument block-boundary callback failed: {error}"[:256]
 
+        # Optional mode-dependent polyphony is committed at the same safe point as
+        # instrument parameter state. The manager keeps its constructor capacity
+        # preallocated and fades any voices removed by a downward limit change.
+        voice_limit = getattr(self.instrument, "voice_limit", None)
+        if callable(voice_limit):
+            try:
+                requested_limit = voice_limit(snapshot)
+                self.voice_manager.set_limit(min(requested_limit, self.voice_manager.max_voices))
+            except Exception as error:
+                self._last_error = f"instrument voice-limit callback failed: {error}"[:256]
+        self._notify_instrument_voice_count()
+
         result = np.zeros((self.block, 2), dtype=np.float32)
         cursor = 0
         for event in sorted(dispatch, key=lambda item: getattr(item, "frame", 0)):
@@ -249,18 +264,22 @@ class Engine:
     def _dispatch(self, event: Event, params: ParamSnapshot) -> None:
         if isinstance(event, NoteOn):
             self.voice_manager.note_on(event, params)
+            self._notify_instrument_voice_count()
             return
         if isinstance(event, NoteOff):
             self.voice_manager.note_off(event)
+            self._notify_instrument_voice_count()
             return
         if isinstance(event, RetargetNote):
             self.voice_manager.retarget(event.note_id, event.pitch)
             return
         if isinstance(event, Sustain):
             self.voice_manager.set_sustain(event.on)
+            self._notify_instrument_voice_count()
             return
         if isinstance(event, Panic):
             self.voice_manager.panic()
+            self._notify_instrument_voice_count()
             return
         if isinstance(event, InstrumentEvent):
             self._instrument_event(event.name, event.payload)
@@ -276,6 +295,15 @@ class Engine:
             return
         if isinstance(event, Transport):
             self._instrument_event("transport", (event.tempo, event.swing, event.playing))
+
+    def _notify_instrument_voice_count(self) -> None:
+        """Publish the active note-voice count to instruments that share a polyphony budget."""
+        setter = getattr(self.instrument, "set_main_voice_count", None)
+        if callable(setter):
+            try:
+                setter(self.voice_manager.active_count, self.voice_manager.limit)
+            except Exception as error:
+                self._last_error = f"instrument voice-count callback failed: {error}"[:256]
 
     def _instrument_event(self, name: str, payload: tuple[float | int | str, ...]) -> None:
         callback = getattr(self.instrument, "on_event", None)
@@ -319,7 +347,7 @@ class Engine:
             sample_rate=self.sample_rate,
             block=self.block,
             active_voices=self.voice_manager.active_count,
-            max_voices=self.max_voices,
+            max_voices=self.voice_manager.limit,
             event_queue_depth=len(self.event_queue),
             dropped_events=self.event_queue.dropped_events,
             overflow_count=self.event_queue.overflow_count,

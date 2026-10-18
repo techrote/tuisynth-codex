@@ -1,0 +1,9 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "loom",
+  "id": "steel-shimmer",
+  "name": "Steel Shimmer",
+  "description": "A hard bright pluck with a restrained, high sympathetic shimmer.",
+  "params": {"exc.hardness": 0.9, "str.bright": 0.85, "str.pickpos": 0.09, "str.decay": 9, "sym.mix": 0.38, "sym.couple": 0.42, "sym.scale": 5, "body.type": 5, "body.size": 0.75, "body.mix": 0.42, "fx.reverb.mix": 0.35},
+  "tags": ["steel", "shimmer", "bright"]
+}

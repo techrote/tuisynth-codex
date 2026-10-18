@@ -1,0 +1,9 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "loom",
+  "id": "glass-koto",
+  "name": "Glass Koto",
+  "description": "A bright, short koto-like pluck with a light glassy sustain.",
+  "params": {"body.type": 0, "body.mix": 0, "str.bright": 0.92, "str.pickpos": 0.22, "str.decay": 4, "sym.scale": 3, "sym.mix": 0.18, "sym.couple": 0.26, "fx.reverb.mix": 0.22, "master.drive": 0.08},
+  "tags": ["koto", "glass", "bright"]
+}
