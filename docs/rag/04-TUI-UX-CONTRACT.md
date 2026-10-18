@@ -98,3 +98,23 @@ text using the headless driver; used for documentation and golden tests).
 sequences), `screen_text()` (the rendered canvas as plain text) and `events()` (engine events
 captured from a fake engine). Golden screen snapshots live in `tests/snapshots/*.txt` and are
 updated only with `--update-snapshots`.
+
+### TRIO-007 implementation details
+
+- Canvas cells and rectangles use zero-based `(x, y)` coordinates and half-open bounds. The
+  `HeadlessApp` mouse helpers accept those coordinates and encode SGR terminal positions as
+  `(x + 1, y + 1)`. prompt_toolkit decodes terminal positions back to zero-based cells before
+  the canvas hit map is consulted.
+- Canvas `put` accepts one printable width-one character. Text drawing replaces an unsafe or
+  double-width character with `?` so it cannot shift later cells. Hit rectangles are clipped to
+  the active canvas; later drawn rectangles win overlaps.
+- Mono skins and `NO_COLOR` use ASCII-safe glyphs. The meter accepts normalized RMS values with
+  optional peak holds and an optional right channel for stereo display.
+- `MouseRouter` retains a left-button capture through moves and release outside the captured
+  widget. Hover, right-click and wheel actions route to the last rendered hit map.
+- Widgets emit parameter callback pairs and do not import engine or DSP modules. A headless
+  test can translate those callbacks into `ParamSet` values with a fake queue; when no event
+  source is supplied, `HeadlessApp.events()` returns normalized UI input evidence.
+- `CanvasApp` caches clean frames and coalesces idle invalidations to at most 4 fps, or animated
+  invalidations to at most 30 fps. Render failures are logged when possible, show an error panel,
+  and leave global `Ctrl+Q` handling active.

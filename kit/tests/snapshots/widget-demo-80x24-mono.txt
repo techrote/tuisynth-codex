@@ -1,0 +1,24 @@
++-TRIO / TUI WIDGET DEMO-------------------------------------80x24-------------+
+|                                                                              |
+| [Voice]                  Mod                      FX                         |
+|                                                                              |
+|                                                                              |
+| Level             0.65   Cutoff          Enabled [OFF]    Wave: < Triangle > |
+|                             //--_\|                                          |
+| --------------|-------      1200.00                                          |
+|                                                                              |
+|                                                                              |
+| +-XY--------------+    Output                 [ Apply ]                      |
+| |                 |    L ##########--|-                                      |
+| |                 |    R ########---|--                                      |
+| |                 |                                                          |
+| |                 |                                                          |
+| |        +        |    Preset: Glass Tide                                    |
+| |                 |                                                          |
+| |                 |                                                          |
+| |                 |                        Library                           |
+| |                 |                          Init                            |
+| +-----------------+                        > Glass Tide                      |
+|                                              Long Echo                       |
+|                                                                              |
++-Tab focus  Arrows adjust  Delete resets  Ctrl+Q quits------------------------+
