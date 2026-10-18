@@ -78,11 +78,14 @@ def test_instrument_packages_depend_only_on_the_shared_kit() -> None:
 def test_all_packages_declare_factory_asset_data() -> None:
     for folder, (_, import_name, _) in PACKAGES.items():
         project = tomllib.loads((ROOT / folder / "pyproject.toml").read_text(encoding="utf-8"))
-        assert project["tool"]["setuptools"]["package-data"][import_name] == [
+        expected = [
             "py.typed",
             "data/presets/*.json",
             "data/skins/*.txt",
         ]
+        if folder == "kit":
+            expected.append("data/skins/*.toml")
+        assert project["tool"]["setuptools"]["package-data"][import_name] == expected
 
 
 def test_ci_qualifies_all_required_platform_and_python_combinations_with_read_only_permissions() -> None:

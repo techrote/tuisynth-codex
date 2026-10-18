@@ -55,6 +55,7 @@ from trio_kit.preset import (
     serialize_preset,
 )
 from trio_kit.userdata import get_user_data_dir
+from trio_kit.skins import Skin, SkinLibrary, Style, load_skin, mono_skin
 
 __version__ = "0.1.0"
 
@@ -107,14 +108,19 @@ __all__ = [
     "PresetWarning",
     "Reverb",
     "RtMidiBackend",
+    "Skin",
+    "SkinLibrary",
     "SoundDeviceBackend",
     "Sustain",
+    "Style",
     "StereoDelay",
     "Transport",
     "Voice",
     "VoiceManager",
     "get_user_data_dir",
     "load_preset",
+    "load_skin",
+    "mono_skin",
     "parse_preset",
     "save_preset",
     "serialize_preset",

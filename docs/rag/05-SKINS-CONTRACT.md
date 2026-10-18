@@ -56,6 +56,7 @@ to `text` (and are listed in load warnings).
 `mono` fallback plus warnings when the file is unusable. Rules:
 
 - File size <= 128 KiB; TOML parse errors -> fallback + warning.
+- `fps` must be an integer from 1 to 60; omitted or invalid values use 24.
 - Colours must be `#rrggbb` or a palette name; anything else -> warning, role uses `text`.
 - Unknown top-level keys or style attributes -> warning, ignored.
 - Art blocks: <= 40 lines x 160 columns, printable characters only; control characters and
@@ -76,6 +77,11 @@ prompt_toolkit's own colour-depth handling; skins must still be legible in `mono
 `F6`/`Shift+F6` cycle skins; the library overlay previews a skin on hover and commits on
 click/Enter, `Esc` reverts. The active skin is remembered in session state.
 
+The shared library scans packaged factory TOML skins and then the instrument's user `skins/`
+directory. A user skin replaces a factory skin with the same id. The `mono` id is reserved for
+the immutable built-in fallback. Legacy schema 1.0 role aliases and nested ramp/glyph/art values
+normalize to the schema 1.1 `Skin` model.
+
 ## Per-instrument factory colourways (art direction)
 
 | Instrument | Skin | Mood | Key colours |
@@ -93,3 +99,12 @@ click/Enter, `Esc` reverts. The active skin is remembered in session state.
 
 Each instrument's skins also define its own `[art]` logo and visualizer `[glyphs]`/`[ramps]`
 so the look stays instrument-specific.
+
+## Shared-kit scope and app assets
+
+TRIO-006 implements the shared `Skin`/`Style` model, hardened TOML normalization and validation,
+factory/user loading precedence, cycling, NO_COLOR/mono behavior, and the guaranteed-safe `mono`
+skin. Its issue explicitly leaves per-instrument skins out of scope. The named colourways and
+instrument-specific art above are art direction for the owning app issues: AURORA in TRIO-010,
+LOOM in TRIO-012, and DRIFT in TRIO-014. Those issues add and qualify their own factory skin
+assets through this shared library.
