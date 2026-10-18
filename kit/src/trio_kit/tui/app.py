@@ -131,11 +131,11 @@ class CanvasApp:
         @bindings.add("c-q", eager=True)
         def _quit(event: Any) -> None:
             self.event_log.append(UIEvent("quit", key="c-q"))
-            self.input_count += 1
             try:
                 if self.quit_callback is not None:
                     self.quit_callback()
             finally:
+                self.input_count += 1
                 event.app.exit(result=None)
 
         @bindings.add(Keys.Any)
@@ -145,21 +145,25 @@ class CanvasApp:
             if key == "any" and data == " ":
                 key, data = "space", ""
             self.event_log.append(UIEvent("key", key=key))
-            self.input_count += 1
-            # Space is the sequencer transport key for the shared synth shell,
-            # never a note or generic widget activation. Let the shell own it
-            # before focused widgets see it.
-            handled = False
-            if key == "space" and self.on_key_callback is not None:
-                result = self.on_key_callback(key, data)
-                handled = result is not False
-            if not handled:
-                handled = self.widgets.handle_key(key, data)
-            if not handled and self.on_key_callback is not None:
-                result = self.on_key_callback(key, data)
-                handled = result is not False
-            if handled or key:
-                self.invalidate()
+            try:
+                # Space is the sequencer transport key for the shared synth shell,
+                # never a note or generic widget activation. Let the shell own it
+                # before focused widgets see it.
+                handled = False
+                if key == "space" and self.on_key_callback is not None:
+                    result = self.on_key_callback(key, data)
+                    handled = result is not False
+                if not handled:
+                    handled = self.widgets.handle_key(key, data)
+                if not handled and self.on_key_callback is not None:
+                    result = self.on_key_callback(key, data)
+                    handled = result is not False
+                if handled or key:
+                    self.invalidate()
+            finally:
+                # HeadlessApp waits on this counter before inspecting results.
+                # Publish completion only after widget and shell handlers finish.
+                self.input_count += 1
 
         return bindings
 
