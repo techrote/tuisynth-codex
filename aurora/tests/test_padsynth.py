@@ -61,6 +61,16 @@ def test_phase_seed_changes_waveform_without_changing_magnitude_spectrum() -> No
     assert np.sqrt(np.mean(first.left.astype(np.float64) ** 2)) == pytest.approx(0.16, abs=2e-6)
 
 
+def test_phase_seeds_preserve_real_only_dc_and_nyquist_bins() -> None:
+    params = _params(**{"spec.count": 2, "spec.bw": 400, "spec.bwscale": 2, "spec.noise": 0.25, "spec.seed": 9})
+    first = generate_zone(48_000, 96, params, [1.0] * 64)
+    second = generate_zone(48_000, 96, {**params, "spec.seed": 10}, [1.0] * 64)
+    first_spectrum = np.abs(np.fft.rfft(first.left.astype(np.float64)))
+    second_spectrum = np.abs(np.fft.rfft(second.left.astype(np.float64)))
+    assert first_spectrum[0] == pytest.approx(second_spectrum[0], rel=1e-3, abs=1e-7)
+    assert first_spectrum[-1] == pytest.approx(second_spectrum[-1], rel=1e-3, abs=1e-7)
+
+
 def test_partials_above_the_nyquist_policy_are_not_painted() -> None:
     params = _params(**{"spec.count": 2, "spec.bw": 1, "spec.bwscale": 0, "spec.seed": 1})
     magnitude = _paint_magnitude(48_000, note_frequency(96), 64, params, [1.0] * 64)

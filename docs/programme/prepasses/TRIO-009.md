@@ -34,3 +34,4 @@
 - On Python 3.12.10 / NumPy 2.4.3 / SciPy 1.17.1, all seven 2^18 tables at 64 partials stayed below the 10 s acceptance guard; the dense eight-voice 48 kHz offline regression stayed below its 15 s guard.
 - An offline preset change can supersede a worker-produced table before the next audio boundary. Invalidating that invisible pending set when the newer request arrives avoids blocking `--render` while preserving block-only commits.
 - Voice review caught a scalar phase-step path when pitch LFO was not selected; frequency samples are now broadcast across the block. Detuned right-channel playback uses its own phase accumulator, and reused voices reset filter/LFO state.
+- FFT review also fixed the real-only DC/Nyquist phase bins; leaving random complex phases there changed endpoint magnitudes between seeds because `irfft` discards their imaginary components.

@@ -28,6 +28,7 @@ for k in 1..H:                                  H = spec.count (16, 32 or 64)
     add A_k * gaussian(freq_bins, centre=f_k, sigma=bw_hz/2) to magnitude[]
 magnitude += spec.noise * 1e-3 * mean(magnitude)          optional noise floor
 phase_L, phase_R = uniform(0, 2pi) from Generator(seed=spec.seed*2), Generator(spec.seed*2+1)
+# DC and Nyquist bins are real-only and use phase 0
 table_L = irfft(magnitude * exp(i*phase_L)), table_R likewise
 normalise both by the same deterministic Parseval scale to RMS 0.16
 ```

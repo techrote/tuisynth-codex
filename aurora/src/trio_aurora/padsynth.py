@@ -102,6 +102,10 @@ def generate_zone(
     seed = int(params["spec.seed"])
     left_phase = np.random.default_rng(seed * 2).uniform(0.0, _PHASE_TAU, size=bin_count)
     right_phase = np.random.default_rng(seed * 2 + 1).uniform(0.0, _PHASE_TAU, size=bin_count)
+    # DC and Nyquist bins are real-only in an rFFT; assigning them complex
+    # phases would attenuate their magnitudes differently for each seed.
+    left_phase[0] = left_phase[-1] = 0.0
+    right_phase[0] = right_phase[-1] = 0.0
     left = np.fft.irfft(magnitude * np.exp(1j * left_phase), n=TABLE_SIZE)
     right = np.fft.irfft(magnitude * np.exp(1j * right_phase), n=TABLE_SIZE)
     # Parseval's theorem gives the same RMS for every phase realization, so
