@@ -22,4 +22,4 @@ midi = ["mido>=1.3,<2", "python-rtmidi>=1.5,<2"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-trio_kit = ["py.typed", "data/presets/*.json", "data/skins/*.txt"]
+trio_kit = ["py.typed", "data/presets/*.json", "data/skins/*.txt", "data/skins/*.toml"]
