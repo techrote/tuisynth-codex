@@ -28,6 +28,45 @@ def _shell(tmp_path: Path, skin: str = "mono") -> Shell:
     )
 
 
+def test_shift_f4_opens_focused_spectral_modulation_area(tmp_path: Path) -> None:
+    shell = _shell(tmp_path)
+    try:
+        with HeadlessApp(size=(80, 24), app=shell.build_app()) as app:
+            app.press("s-f4")
+            assert shell.current_screen == "s-f4"
+            assert shell.widgets.focused_tag == "modulation-spectral"
+            assert "MOD MATRIX" in app.screen_text()
+            assert "SPECTRAL" in app.screen_text()
+            app.press("escape")
+            assert shell.current_screen == "f2"
+    finally:
+        shell.shutdown()
+
+
+def test_sgr_modulation_route_and_pedal_reorder_reach_aurora_screen(tmp_path: Path) -> None:
+    shell = _shell(tmp_path)
+    try:
+        with HeadlessApp(size=(80, 24), app=shell.build_app()) as app:
+            app.press("s-f4")
+            app.screen_text()
+            widget = next(item for item in shell.widgets.widgets if item.tag == "modulation-spectral")
+            grid = widget._grid
+            assert grid is not None
+            app.click(grid.x + 5, grid.y)
+            app.click(widget.bounds.x + widget._cell_width // 2, widget._details_y + 1)
+            app.click(widget.bounds.x + widget._cell_width - 1, widget._details_y + 2)
+            route = shell._known_extras["modulation"]["slots"][0]
+            assert route["source"] == "lfo1"
+            assert route["destination"] == "osc.detune"
+            assert route["amount"] == pytest.approx(1.0)
+
+            first, second = widget._pedals[:2]
+            app.drag(((first.x + first.width // 2, first.y), (second.x + second.width // 2, second.y)))
+            assert shell._known_extras["modulation"]["rack"]["order"][1] == "tremolo"
+    finally:
+        shell.shutdown()
+
+
 def test_factory_skins_have_no_warnings_and_define_aurora_roles(tmp_path, monkeypatch) -> None:
     monkeypatch.delenv("NO_COLOR", raising=False)
     root = Path(__file__).parents[1] / "src" / "trio_aurora" / "data" / "skins"

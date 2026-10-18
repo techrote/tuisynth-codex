@@ -255,7 +255,7 @@ class DriftInstrument:
     def _render_voice(self, voice: DriftVoice, envelope: np.ndarray, params: ParamSnapshot) -> None:
         self._schedule_voice(voice, envelope, params)
 
-    def process_bus(self, buffer: np.ndarray, params: ParamSnapshot) -> np.ndarray:
+    def process_pre_fx(self, buffer: np.ndarray, params: ParamSnapshot) -> np.ndarray:
         samples = np.asarray(buffer, dtype=np.float32)
         if samples.ndim != 2 or samples.shape[1] != 2:
             raise ValueError("DRIFT bus expects stereo buffers")
@@ -299,22 +299,25 @@ class DriftInstrument:
             noise = self._howl_rng.standard_normal((len(samples), 2)).astype(np.float64)
             formant = formant + (self._howl_filter.process(noise) * (0.04 * howl_amount)).astype(np.float32)
 
-        delay = self._delay
-        reverb = self._reverb
-        if delay is not None and reverb is not None:
-            delay.set_parameters(
-                delay_seconds=float(params["fx.delay.time"]),
-                feedback=float(params["fx.delay.feedback"]),
-                mix=float(params["fx.delay.mix"]),
-            )
-            reverb.set_parameters(
-                size=float(params["fx.reverb.size"]),
-                damp=float(params["fx.reverb.damp"]),
-                mix=float(params["fx.reverb.mix"]),
-            )
-            effected = reverb.process(delay.process(formant))
-        else:
-            effected = formant
+        return formant.astype(np.float32, copy=False)
+
+    def process_fx_unit(self, name: str, buffer: np.ndarray, params: ParamSnapshot) -> np.ndarray:
+        samples = np.asarray(buffer, dtype=np.float32)
+        if name == "delay" and self._delay is not None:
+            self._delay.set_parameters(delay_seconds=float(params["fx.delay.time"]), feedback=float(params["fx.delay.feedback"]), mix=float(params["fx.delay.mix"]))
+            return self._delay.process(samples)
+        if name == "reverb" and self._reverb is not None:
+            self._reverb.set_parameters(size=float(params["fx.reverb.size"]), damp=float(params["fx.reverb.damp"]), mix=float(params["fx.reverb.mix"]))
+            return self._reverb.process(samples)
+        return samples
+
+    def process_post_fx(self, buffer: np.ndarray, params: ParamSnapshot) -> np.ndarray:
+        formant = np.asarray(buffer, dtype=np.float32)
+        if formant.ndim != 2 or formant.shape[1] != 2:
+            raise ValueError("DRIFT bus expects stereo buffers")
+        if len(formant) == 0:
+            return formant
+        effected = formant
         drive = float(params["master.drive"])
         if drive > 0:
             shaped = np.tanh(effected * (1.0 + 9.0 * drive)) / math.tanh(1.0 + 9.0 * drive)
@@ -322,12 +325,21 @@ class DriftInstrument:
         output = (effected * float(params["master.level"])).astype(np.float32)
 
         if self._old_sources is not None:
-            self._source_fade_position += len(samples)
+            self._source_fade_position += len(formant)
             if self._source_fade_position >= self._source_fade_frames:
                 self._old_sources = None
-        self._block_cursor += len(samples)
-        self._absolute_frame += len(samples)
+        self._block_cursor += len(formant)
+        self._absolute_frame += len(formant)
         return output
+
+    def process_bus(self, buffer: np.ndarray, params: ParamSnapshot) -> np.ndarray:
+        """Compatibility wrapper retaining the original bus entry point."""
+        pre = self.process_pre_fx(buffer, params)
+        if len(pre) == 0:
+            return pre
+        pre = self.process_fx_unit("delay", pre, params)
+        pre = self.process_fx_unit("reverb", pre, params)
+        return self.process_post_fx(pre, params)
 
     def set_gust_held(self, held: bool) -> None:
         if not isinstance(held, bool):

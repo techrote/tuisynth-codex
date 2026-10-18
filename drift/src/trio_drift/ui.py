@@ -11,7 +11,7 @@ from weakref import WeakKeyDictionary
 from trio_kit.events import InstrumentEvent
 from trio_kit.params import ParamSpec
 from trio_kit.shell import InstrumentSpec, Shell
-from trio_kit.tui import Canvas, Rect, SequencerWidget
+from trio_kit.tui import Canvas, ModulationWidget, Rect, SequencerWidget
 from trio_kit.tui.mouse import MouseInput
 from trio_kit.tui.widgets import Widget
 
@@ -524,6 +524,7 @@ class _View:
         self.air: ParameterDrawer | None = None
         self.library: LibraryHUD | None = None
         self.sequencer: SequencerWidget | None = None
+        self.modulation: ModulationWidget | None = None
 
     def _close(self) -> None:
         self.screen = "map"
@@ -535,7 +536,7 @@ class _View:
 
     def _visibility(self) -> None:
         if self.weather is not None:
-            self.weather.visible = True
+            self.weather.visible = self.screen != "modulation"
         if self.grain is not None:
             self.grain.visible = self.screen == "grain"
         if self.air is not None:
@@ -544,6 +545,8 @@ class _View:
             self.library.visible = self.screen == "library"
         if self.sequencer is not None:
             self.sequencer.visible = self.screen == "sequencer"
+        if self.modulation is not None:
+            self.modulation.visible = self.screen == "modulation"
 
     def widgets(self, width: int, height: int) -> tuple[Widget, ...]:
         compact = width < 100 or height < 30
@@ -566,22 +569,32 @@ class _View:
         seq_y = map_bounds.y + 1
         seq_height = max(4, min(8, map_bounds.height - 2))
         self.sequencer = SequencerWidget(self.shell, Rect(panel_x, seq_y, panel_width, seq_height), "pressure")
+        mod_height = max(10, height - 3)
+        mod_y = 3
+        self.modulation = ModulationWidget(self.shell, Rect(panel_x, mod_y, panel_width, mod_height), "pressure")
         self._visibility()
-        return (self.weather, self.grain, self.air, self.library, self.sequencer)
+        return (self.weather, self.grain, self.air, self.library, self.sequencer, self.modulation)
 
     def on_screen(self, key: str) -> None:
+        if key == "mod-return":
+            previous = self.shell._screen_before_modulation
+            target = previous if previous in {"f2", "f3", "f4", "f5"} else "f2"
+            self.shell.current_screen = target
+            self.on_screen(target)
+            return
         if key == "seq-return":
             previous = self.shell._screen_before_sequencer
             target = previous if previous in {"f2", "f3", "f4", "f5"} else "f2"
             self.shell.current_screen = target
             self.on_screen(target)
             return
-        self.screen = {"f2": "map", "f3": "grain", "f4": "air", "f5": "library", "s-f3": "sequencer", "shift-f3": "sequencer"}.get(key, "map")
+        self.screen = {"f2": "map", "f3": "grain", "f4": "air", "f5": "library", "s-f3": "sequencer", "shift-f3": "sequencer", "s-f4": "modulation", "shift-f4": "modulation"}.get(key, "map")
         self._visibility()
         tag = {
             "map": "drift-weather-map", "grain": "drift-grain-drawer",
             "air": "drift-air-drawer", "library": "drift-library",
             "sequencer": "sequencer-pressure",
+            "modulation": "modulation-pressure",
         }[self.screen]
         self.shell.widgets.focus(tag)
         self.shell.invalidate()
@@ -609,7 +622,7 @@ class DriftUI:
         params = shell._known_params
         wind = float(telemetry.instrument.get("wind", 0.0))
         gust = float(telemetry.instrument.get("gust", 0.0))
-        status = f"FIELD x {float(params['field.x']):.2f} | y {float(params['field.y']):.2f}   WIND {wind:+.2f}   GUST {gust:.2f}"
+        status = "MODULATION MATRIX · pressure cells and post-tone pedalboard" if self.view(shell).screen == "modulation" else f"FIELD x {float(params['field.x']):.2f} | y {float(params['field.y']):.2f}   WIND {wind:+.2f}   GUST {gust:.2f}"
         canvas.text(2, 3, status, "muted", max_width=canvas.width - 4)
 
     def header(self, shell: Shell) -> str:
@@ -632,6 +645,8 @@ class DriftUI:
             return "LIB sounds/skins left/right switch up/dn select Enter apply Esc map F8 actions"
         if screen == "sequencer":
             return "SEQ arrows · Enter toggle · drag velocity · right-click chance · Space transport · A/M/O/R/L arp · Esc map"
+        if screen == "modulation":
+            return "MOD · click route · wheel amount · drag pedals · R source · T target · +/- amount · B bypass · Del clear · Esc return"
         return "MAP drag/gust; right=centre; wheel=density; F2 map F3 grain Shift+F3 seq F4 air F5 lib"
 
     def on_screen(self, key: str, shell: Shell) -> None:
@@ -647,6 +662,7 @@ class DriftUI:
             "Map keyboard twin: focus map; arrows move 2%, PageUp/Down move vertically 10%, Enter gust, Delete centre",
             "Mouse wheel changes grain density; particles show active grain pan, pitch, amplitude and age",
             "F3 grain controls · Shift+F3 sequencer ring · F4 air controls · F5 preset and skin library · Escape returns",
+            "Shift+F4 opens modulation routing and reorderable effects; click or use R/T/+/-/B/Delete/[ ] keys",
             "Grain/Air: click selects or increments; wheel adjusts; right-click resets the pointed control",
             "Drawer keys: Up/Down select; Left/Right adjust; PageUp/Down coarse; Home/End limits; Delete default",
             "F6 changes skin · F8 shared preset actions · F9 panic · Ctrl+Q quits",

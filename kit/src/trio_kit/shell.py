@@ -192,7 +192,7 @@ class Shell:
             data_dir=data_dir,
             factory_package=spec.factory_package,
             factory_dir=spec.factory_presets_dir,
-            extras_validator=lambda extras: validate_shared_extras(extras, spec.extras_validator),
+            extras_validator=lambda extras: validate_shared_extras(extras, spec.extras_validator, self.registry),
         )
         self.keyboard = KeyboardPiano()
         self._known_params = dict(self.engine.param_snapshot)
@@ -205,6 +205,7 @@ class Shell:
         self.current_preset: Preset | None = None
         self.current_screen = "main"
         self._screen_before_sequencer: str | None = None
+        self._screen_before_modulation: str | None = None
         self.status_message: str | None = None
         self.overlay: str | None = None
         self.overlay_index = 0
@@ -305,7 +306,7 @@ class Shell:
         """Validate and apply instrument extras through its thread-safe engine hook."""
         if not isinstance(extras, Mapping):
             raise TypeError("instrument extras must be a mapping")
-        validated = validate_shared_extras(dict(extras), self.spec.extras_validator)
+        validated = validate_shared_extras(dict(extras), self.spec.extras_validator, self.registry)
         frozen = _copy_json_value(validated)
         if not isinstance(frozen, dict):
             raise TypeError("validated instrument extras must be a mapping")
@@ -446,6 +447,7 @@ class Shell:
             self.piano._set_octave(previous_octave)
             self.piano._cursor = min(previous_cursor, self.piano.octaves * 12 - 1)
             self.piano._latches.update(previous_latches)
+            self.piano.visible = self.current_screen != "s-f4"
             entries.append(self.piano)
         self._overlay_layer = _OverlayLayer(self, Rect(0, 0, width, height))
         self._overlay_layer.focusable = self.overlay is not None
@@ -509,7 +511,7 @@ class Shell:
     def _overlay_rows(self) -> tuple[str, ...]:
         if self.overlay == "help":
             rows = (
-                "F1 help   F2-F5 instrument screens   Shift+F3 sequencer   F6 / Shift+F6 skin",
+                "F1 help   F2-F5 instrument screens   Shift+F3 sequencer   Shift+F4 modulation   F6 / Shift+F6 skin",
                 "Sequencer focus: click/drag/right-click steps; arrows, Enter, PgUp/Dn; A/M/O/R/L arp",
                 "F7 MIDI picker   F8 preset library   F9 panic",
                 "Ctrl+L MIDI CC learn   Ctrl+P command palette",
@@ -806,11 +808,21 @@ class Shell:
             self.panic()
             return True
         if key in {"s-f3", "shift-f3"} and self.spec.on_screen is not None:
+            self.piano.visible = True
             if self.current_screen != "s-f3":
                 self._screen_before_sequencer = self.current_screen
             self.current_screen = "s-f3"
             self.spec.on_screen("s-f3", self)
             self.status_message = f"{self.spec.name} sequencer"
+            self.invalidate()
+            return True
+        if key in {"s-f4", "shift-f4"} and self.spec.on_screen is not None:
+            self.piano.visible = False
+            if self.current_screen != "s-f4":
+                self._screen_before_modulation = self.current_screen
+            self.current_screen = "s-f4"
+            self.spec.on_screen("s-f4", self)
+            self.status_message = f"{self.spec.name} modulation"
             self.invalidate()
             return True
         if key == "c-p":
@@ -826,6 +838,12 @@ class Shell:
             self.redo()
             return True
         if key == "escape":
+            if self.current_screen == "s-f4" and self.spec.on_screen is not None:
+                self.piano.visible = True
+                self.spec.on_screen("mod-return", self)
+                self._screen_before_modulation = None
+                self.invalidate()
+                return True
             if self.current_screen == "s-f3" and self.spec.on_screen is not None:
                 self.spec.on_screen("seq-return", self)
                 self._screen_before_sequencer = None
@@ -835,7 +853,7 @@ class Shell:
                 self.widgets.clear_focus()
                 return True
             return False
-        if key == "space":
+        if key == "space" and self.current_screen != "s-f4":
             current = self._known_extras.get("sequencer", {})
             if isinstance(current, Mapping):
                 settings = dict(current)
@@ -846,6 +864,7 @@ class Shell:
             return True
         if key.startswith("f") and key[1:].isdigit() and key in {"f2", "f3", "f4", "f5"}:
             if self.spec.on_screen is not None:
+                self.piano.visible = True
                 self.current_screen = key.lower()
                 self.spec.on_screen(self.current_screen, self)
                 self.status_message = f"{self.spec.name} screen {key.upper()}"
@@ -914,13 +933,19 @@ class Shell:
 
     def snapshot(self, width: int = 100, height: int = 30, *, screen: str = "main") -> str:
         overlays = {"main", "help", "palette", "skins", "midi", "presets"}
-        if screen != "sequencer" and screen not in overlays and screen not in self.spec.screen_names:
+        if screen not in {"sequencer", "modulation"} and screen not in overlays and screen not in self.spec.screen_names:
             raise ValueError("unknown snapshot screen")
         if screen == "sequencer":
             if self.spec.on_screen is None:
                 raise ValueError("instrument has no sequencer screen")
             self.current_screen = "s-f3"
             self.spec.on_screen("s-f3", self)
+        elif screen == "modulation":
+            if self.spec.on_screen is None:
+                raise ValueError("instrument has no modulation screen")
+            self.piano.visible = False
+            self.current_screen = "s-f4"
+            self.spec.on_screen("s-f4", self)
         elif screen in self.spec.screen_names:
             key = f"f{self.spec.screen_names.index(screen) + 2}"
             self.current_screen = key

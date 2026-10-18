@@ -59,6 +59,9 @@ class _EventVoice:
     voice: LoomVoice
     string_index: int
     order: int
+    note_id: int
+    started_frame: int
+    released_frame: int | None = None
     level: float = 0.0
     fade_total: int = 0
     fade_position: int = 0
@@ -77,6 +80,8 @@ class LoomInstrument:
         self._params = ParamSnapshot(self.registry.defaults())
         self._extras: dict[str, object] = {}
         self._event_counter = 0
+        self._modulation_note_counter = 0
+        self._modulation_processor: object | None = None
         self._frame_clock = 0
         self._main_voice_count = 0
         self._main_voice_limit = 8
@@ -121,6 +126,13 @@ class LoomInstrument:
             raise ValueError("engine seed must be a non-negative integer")
         self.seed = seed
         self._event_counter = 0
+        self._modulation_note_counter = 0
+
+    def set_modulation_processor(self, processor: object) -> None:
+        """Attach the shared engine modulation evaluator to surface-triggered voices."""
+        if not callable(getattr(processor, "voice_snapshot", None)):
+            raise TypeError("modulation processor must provide voice_snapshot")
+        self._modulation_processor = processor
 
     def voice_limit(self, params: ParamSnapshot) -> int:
         """Set polyphony to eight plucks or four bows at each engine boundary."""
@@ -143,12 +155,42 @@ class LoomInstrument:
     def _fade_event_voice(self, item: _EventVoice) -> None:
         if item.fade_total > 0:
             return
-        item.voice.release()
+        self._release_event_voice(item)
         item.fade_total = max(1, int(round(0.005 * self.sample_rate)))
         item.fade_position = 0
         if self._bow_voices.get(item.string_index) is item:
             self._bow_voices.pop(item.string_index, None)
             self._bow_strings = tuple(sorted(self._bow_voices))
+
+    def _release_event_voice(self, item: _EventVoice) -> None:
+        if item.released_frame is None:
+            item.released_frame = self._frame_clock
+            item.voice.release()
+
+    def _event_voice_params(
+        self,
+        item: _EventVoice,
+        params: ParamSnapshot,
+        *,
+        frame_index: int,
+        frames: int,
+        pitch: float | None = None,
+        velocity: float | None = None,
+    ) -> ParamSnapshot:
+        processor = self._modulation_processor
+        snapshot = getattr(processor, "voice_snapshot", None)
+        if not callable(snapshot):
+            return params
+        released = None if item.released_frame is None else max(0, frame_index - item.released_frame)
+        return snapshot(
+            params,
+            note_id=item.note_id,
+            pitch=item.voice.pitch if pitch is None else pitch,
+            velocity=item.voice.velocity if velocity is None else velocity,
+            age_frames=max(0, frame_index - item.started_frame),
+            released_frames=released,
+            frames=frames,
+        )
 
     def _trim_event_voices(self) -> None:
         active = sorted(
@@ -225,7 +267,15 @@ class LoomInstrument:
             if voice is None or voice.finished:
                 self._voice_activity.pop(identity, None)
 
-    def _new_event_voice(self, pitch: float, velocity: float, mode: str, string_index: int) -> _EventVoice | None:
+    def _new_event_voice(
+        self,
+        pitch: float,
+        velocity: float,
+        mode: str,
+        string_index: int,
+        *,
+        start_frame: int | None = None,
+    ) -> _EventVoice | None:
         limit = self._event_voice_budget()
         if limit <= 0:
             return None
@@ -235,15 +285,31 @@ class LoomInstrument:
             self._fade_event_voice(oldest)
         rng = np.random.default_rng(np.random.SeedSequence([self.seed, self._event_counter]))
         self._event_counter += 1
+        self._modulation_note_counter += 1
+        # Surface event IDs use a high namespace disjoint from ordinary MIDI and
+        # sequencer note IDs while remaining deterministic for seeded renders.
+        note_id = (1 << 62) + self._modulation_note_counter
+        started = self._frame_clock if start_frame is None else int(start_frame)
         voice = self.create_voice(rng)
-        voice.start_event(pitch, velocity, self._params, mode)
-        item = _EventVoice(voice, string_index, self._event_counter)
+        item = _EventVoice(voice, string_index, self._event_counter, note_id, started)
+        voice.start_event(
+            pitch,
+            velocity,
+            self._event_voice_params(
+                item, self._params, frame_index=started, frames=0,
+                pitch=pitch, velocity=velocity,
+            ),
+            mode,
+        )
         self._event_voices.append(item)
         while len(self._event_voices) > max(1, self.voice_limit(self._params)) * 3:
             oldest_tail = next((item for item in self._event_voices if item.fade_total > 0), None)
             if oldest_tail is None:
                 break
             self._event_voices.remove(oldest_tail)
+            finished = getattr(self._modulation_processor, "note_finished", None)
+            if callable(finished):
+                finished(oldest_tail.note_id)
         return item
 
     @staticmethod
@@ -277,7 +343,7 @@ class LoomInstrument:
                 index = int(self._number(payload[0], -1))
                 item = self._bow_voices.pop(index, None)
                 if item is not None:
-                    item.voice.release()
+                    self._release_event_voice(item)
                     self._bow_strings = tuple(sorted(self._bow_voices))
             return
         if name == "bow_on":
@@ -290,7 +356,7 @@ class LoomInstrument:
                 return
             previous = self._bow_voices.pop(string_index, None)
             if previous is not None:
-                previous.voice.release()
+                self._release_event_voice(previous)
             item = self._new_event_voice(pitch, velocity, "bow", string_index)
             if item is not None:
                 self._bow_voices[string_index] = item
@@ -352,11 +418,12 @@ class LoomInstrument:
             )
         self._scheduled.sort(key=lambda item: (item.due, item.order))
 
-    def _render_event_voices(self, frames: int, params: ParamSnapshot) -> np.ndarray:
+    def _render_event_voices(self, frames: int, params: ParamSnapshot, *, frame_index: int) -> np.ndarray:
         output = np.zeros((frames, 2), dtype=np.float32)
         live: list[_EventVoice] = []
         for item in self._event_voices:
-            buffer = item.voice.render(frames, params)
+            voice_params = self._event_voice_params(item, params, frame_index=frame_index, frames=frames)
+            buffer = item.voice.render(frames, voice_params)
             if item.fade_total > 0:
                 count = min(frames, item.fade_total - item.fade_position)
                 gains = np.maximum(
@@ -371,10 +438,14 @@ class LoomInstrument:
             output += buffer
             if not item.voice.finished and (item.fade_total == 0 or item.fade_position < item.fade_total):
                 live.append(item)
+            else:
+                finished = getattr(self._modulation_processor, "note_finished", None)
+                if callable(finished):
+                    finished(item.note_id)
         self._event_voices = live
         return output
 
-    def process_bus(self, buffer: np.ndarray, params: ParamSnapshot) -> np.ndarray:
+    def process_pre_fx(self, buffer: np.ndarray, params: ParamSnapshot) -> np.ndarray:
         samples = np.asarray(buffer, dtype=np.float32)
         if samples.ndim != 2 or samples.shape[1] != 2:
             raise ValueError("LOOM bus expects stereo buffers")
@@ -386,16 +457,23 @@ class LoomInstrument:
             due_offset = self._scheduled[0].due - self._frame_clock if self._scheduled else frames
             if due_offset > cursor:
                 count = min(frames - cursor, due_offset - cursor)
-                result[cursor : cursor + count] += self._render_event_voices(count, params)
+                result[cursor : cursor + count] += self._render_event_voices(
+                    count, params, frame_index=self._frame_clock + cursor,
+                )
                 cursor += count
                 continue
             due_frame = self._frame_clock + cursor
             while self._scheduled and self._scheduled[0].due <= due_frame:
                 item = self._scheduled.pop(0)
-                self._new_event_voice(item.pitch, item.velocity, item.mode, item.string_index)
+                self._new_event_voice(
+                    item.pitch, item.velocity, item.mode, item.string_index,
+                    start_frame=due_frame,
+                )
             if not self._scheduled and cursor < frames:
                 count = frames - cursor
-                result[cursor:] += self._render_event_voices(count, params)
+                result[cursor:] += self._render_event_voices(
+                    count, params, frame_index=self._frame_clock + cursor,
+                )
                 cursor = frames
 
         # Surface-triggered string voices have already been added to result. Feed
@@ -424,7 +502,18 @@ class LoomInstrument:
         if body_mix and self._body.filters:
             body = self._body.process(result)
             result = (result * (1.0 - body_mix) + body * body_mix).astype(np.float32)
-        result = self._reverb.process(result)
+        return result.astype(np.float32, copy=False)
+
+    def process_fx_unit(self, name: str, buffer: np.ndarray, params: ParamSnapshot) -> np.ndarray:
+        result = np.asarray(buffer, dtype=np.float32)
+        if name != "reverb":
+            return result
+        self._reverb.set_parameters(size=float(params["fx.reverb.size"]), damp=float(params["fx.reverb.damp"]), mix=float(params["fx.reverb.mix"]))
+        return self._reverb.process(result)
+
+    def process_post_fx(self, buffer: np.ndarray, params: ParamSnapshot) -> np.ndarray:
+        result = np.asarray(buffer, dtype=np.float32)
+        frames = len(result)
         drive = float(params["master.drive"])
         if drive:
             result = (np.tanh(result.astype(np.float64) * (1.0 + 5.0 * drive)) / (1.0 + 5.0 * drive)).astype(np.float32)
@@ -433,6 +522,12 @@ class LoomInstrument:
             self._pre_master_peak = max(self._pre_master_peak, float(np.max(np.abs(result))))
         self._frame_clock += frames
         return result.astype(np.float32, copy=False)
+
+    def process_bus(self, buffer: np.ndarray, params: ParamSnapshot) -> np.ndarray:
+        """Compatibility wrapper preserving direct bus callers."""
+        output = self.process_pre_fx(buffer, params)
+        output = self.process_fx_unit("reverb", output, params)
+        return self.process_post_fx(output, params)
 
     def telemetry(self) -> Mapping[str, object]:
         self._prune_voice_activity()
@@ -465,6 +560,10 @@ class LoomInstrument:
         }
 
     def reset(self) -> None:
+        finished = getattr(self._modulation_processor, "note_finished", None)
+        if callable(finished):
+            for item in self._event_voices:
+                finished(item.note_id)
         self._event_voices.clear()
         self._bow_voices.clear()
         self._bow_strings = ()

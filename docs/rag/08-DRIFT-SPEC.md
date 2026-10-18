@@ -76,7 +76,8 @@ frequencies are multiplied by `fmt.shift` (0.6-1.5), bandwidths by `1 / fmt.q`; 
 ### Wind
 
 `wind.rate` (0.01-2 Hz) drives a seeded smooth-random gust signal that scales density by
-`1 + wind.gust * 0.8 * g(t)` and tilts brightness. `wind.howl` mixes a narrow (Q 25)
+`1 + wind.gust * 0.8 * g(t)` and tilts brightness. `wind.howl` is a global-only modulatable
+control that mixes a narrow (Q 25)
 band-pass noise whose centre sweeps 600-2,500 Hz with the gust signal.
 
 ### Field (performance) parameters

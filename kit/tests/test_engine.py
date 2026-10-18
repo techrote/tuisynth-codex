@@ -5,7 +5,9 @@ import pytest
 
 from trio_kit.engine import Engine, EngineTelemetry, MasterBus, OfflineEngine
 from trio_kit.events import EventQueue, InstrumentEvent, NoteOff, NoteOn, ParamSet, PresetApply, RetargetNote
-from trio_kit.params import ParamRegistry, ParamSpec
+from trio_kit.modulation import ModulationConfig, ModulationProcessor
+from trio_kit.params import ParamRegistry, ParamSnapshot, ParamSpec
+from trio_kit.engine.voices import VoiceManager
 
 from engine_fakes import FakeInstrument
 
@@ -133,6 +135,33 @@ def test_optional_instrument_block_boundary_hook_runs_after_snapshot_and_extras_
 
     engine.render(1)
     assert len(instrument.boundaries) == 2
+
+
+def test_engine_modulation_and_rack_edits_commit_together_without_resetting_lfo_phase() -> None:
+    engine = Engine(FakeInstrument(), registry=gain_registry(), seed=23)
+    config_data = ModulationConfig.defaults().to_dict()
+    config_data["lfos"][0] = {"rate": 1.0}
+    config = ModulationConfig.from_dict(config_data)
+    try:
+        engine.set_extras({"modulation": config.to_dict()})
+        engine.render(256)
+        initial_phase = engine.modulation._global_lfos[0].phase
+        assert engine.modulation.config == config
+
+        changed_data = config.to_dict()
+        changed_data["rack"]["units"]["tremolo"]["mix"] = 0.25
+        changed = ModulationConfig.from_dict(changed_data)
+        engine.set_extras({"modulation": changed.to_dict()})
+        assert engine.modulation.config == config
+        assert engine.modulation.requested_config == changed
+        assert engine.modulation._global_lfos[0].phase == pytest.approx(initial_phase)
+
+        engine.render(256)
+        assert engine.modulation.config == changed
+        assert engine.fx_rack.config == changed
+        assert engine.modulation._global_lfos[0].phase == pytest.approx(initial_phase + 256 / engine.sample_rate)
+    finally:
+        engine.close()
 
 
 def test_optional_dynamic_voice_limit_is_applied_per_block_and_reported() -> None:
@@ -275,3 +304,52 @@ def test_voice_steal_fades_survive_a_full_burst_at_the_end_of_a_block() -> None:
 
     assert engine.voice_manager.active_count == 1
     assert engine.voice_manager.tail_count == 9
+
+
+@pytest.mark.parametrize("tail_trigger", ("steal", "limit", "panic"))
+def test_fade_tails_keep_the_last_per_voice_modulation_snapshot(tail_trigger: str) -> None:
+    class ScopedVoice:
+        finished = False
+
+        def start(self, pitch: float, velocity: float, params: ParamSnapshot) -> None:
+            del pitch, velocity, params
+
+        def release(self) -> None:
+            pass
+
+        def render(self, frames: int, params: ParamSnapshot) -> np.ndarray:
+            return np.full((frames, 2), params["voice.level"], dtype=np.float32)
+
+    class ScopedInstrument:
+        def create_voice(self, rng: np.random.Generator) -> ScopedVoice:
+            del rng
+            return ScopedVoice()
+
+    registry = ParamRegistry((
+        ParamSpec("voice.level", "Voice level", "", 0, 1, 0.5, modulatable=True, modulation_scope="voice"),
+    ))
+    data = ModulationConfig.defaults().to_dict()
+    data["slots"][0] = {"source": "velocity", "destination": "voice.level", "amount": 1.0}
+    modulation = ModulationProcessor(registry, 48_000)
+    modulation.set_config(ModulationConfig.from_dict(data))
+    modulation.begin_block(0, 256)
+    params = ParamSnapshot(registry.defaults())
+    manager = VoiceManager(ScopedInstrument(), 1 if tail_trigger == "steal" else 2, 48_000)
+
+    if tail_trigger == "steal":
+        manager.note_on(NoteOn(1, 60, 0.1, "test"), params, modulation=modulation)
+        before = manager.render(1, params, modulation=modulation)
+        manager.note_on(NoteOn(2, 64, 0.5, "test"), params, modulation=modulation)
+    else:
+        manager.note_on(NoteOn(1, 60, 0.5, "test"), params, modulation=modulation)
+        manager.note_on(NoteOn(2, 64, 0.1, "test"), params, modulation=modulation)
+        before = manager.render(1, params, modulation=modulation)
+        if tail_trigger == "limit":
+            manager.set_limit(1)
+        else:
+            manager.panic()
+
+    after = manager.render(1, params, modulation=modulation, frame_index=1)
+
+    np.testing.assert_allclose(before[0], (0.1, 0.1) if tail_trigger == "steal" else (0.6, 0.6))
+    np.testing.assert_allclose(after[0], (0.6, 0.6))

@@ -28,6 +28,45 @@ def _shell(tmp_path: Path, *, skin: str = "mono") -> Shell:
     )
 
 
+def test_shift_f4_opens_focused_pressure_modulation_area(tmp_path: Path) -> None:
+    shell = _shell(tmp_path)
+    try:
+        with HeadlessApp(size=(80, 24), app=shell.build_app()) as app:
+            app.press("s-f4")
+            assert shell.current_screen == "s-f4"
+            assert shell.widgets.focused_tag == "modulation-pressure"
+            assert "MOD MATRIX" in app.screen_text()
+            assert "PRESSURE" in app.screen_text()
+            app.press("escape")
+            assert shell.current_screen == "f2"
+    finally:
+        shell.shutdown()
+
+
+def test_sgr_modulation_route_and_pedal_reorder_reach_drift_screen(tmp_path: Path) -> None:
+    shell = _shell(tmp_path)
+    try:
+        with HeadlessApp(size=(80, 24), app=shell.build_app()) as app:
+            app.press("s-f4")
+            app.screen_text()
+            widget = next(item for item in shell.widgets.widgets if item.tag == "modulation-pressure")
+            grid = widget._grid
+            assert grid is not None
+            app.click(grid.x + 5, grid.y)
+            app.click(widget.bounds.x + widget._cell_width // 2, widget._details_y + 1)
+            app.click(widget.bounds.x + widget._cell_width - 1, widget._details_y + 2)
+            route = shell._known_extras["modulation"]["slots"][0]
+            assert route["source"] == "lfo1"
+            assert route["destination"] == "src.tone"
+            assert route["amount"] == pytest.approx(1.0)
+
+            first, second = widget._pedals[:2]
+            app.drag(((first.x + first.width // 2, first.y), (second.x + second.width // 2, second.y)))
+            assert shell._known_extras["modulation"]["rack"]["order"][1] == "tremolo"
+    finally:
+        shell.shutdown()
+
+
 def test_factory_skins_are_warning_free_and_include_guaranteed_mono(tmp_path: Path) -> None:
     factory = Path(__file__).resolve().parents[1] / "src" / "trio_drift" / "data" / "skins"
     library = SkinLibrary("drift", factory_dir=factory, include_user=False, environ={})

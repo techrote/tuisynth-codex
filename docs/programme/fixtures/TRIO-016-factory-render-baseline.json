@@ -1,0 +1,42 @@
+{
+  "source_commit": "f0ed9ff1cb802d253abb3f2a697a558dd23f92d3",
+  "format": "sha256 of complete offline CLI WAV file (stereo signed PCM16 little-endian)",
+  "render": {
+    "sample_rate": 48000,
+    "seed": 0,
+    "notes": ["C4", "E4", "G4"],
+    "seconds": 2
+  },
+  "presets": {
+    "aurora": {
+      "cathedral-air": "68c5e7aff5b90799fb8af5f5927cc8882c3b442758e3b37c7cf8c07dcd5187dd",
+      "deep-ocean": "f06b21ff3affeffdcaa51640f6c446e2d9a109d835329eeae6d107cd8b46eb01",
+      "glacier-choir": "2c569505e4d217af497c81fbc0dac051fa56e49022362ec1e13e36ab8acff73a",
+      "hollow-partials": "8de47ab0f14bc3b92e81aa56b6e775c13a76c76da9bc9263e1450b46e2499730",
+      "ice-strings": "aa7af3dccc696bdd974a3007de1175d7303a3e565e4bf8d18d32238f4715618b",
+      "northern-veil": "5dd5e232fa9477efa0d87f6664b0705ee9af5e7ff04ce56306472870981b7fd3",
+      "solar-bloom": "7e71ca8c8e73b87515d57b54f7db6f56534eb8b55aeae6cffa0fea99dca10c81",
+      "stretch-bells": "67464d71b646f3487e3759a30ccdbd4df6db2bd626d25aa55643ba7ef0e3facd"
+    },
+    "loom": {
+      "autoharp-dorian": "d7040564dd323cb0ecbe99d00c6c8c014c7349016e88c7a89c48224187d14b32",
+      "cello-drone": "033e722873f19dbb2349adb8b3455701b5f96c2719e85dba1d543b07994b203f",
+      "glass-koto": "0e3188861fc00355a743c10281be3faf95ccbc8934c9009f1febb6e46a2beba1",
+      "hardingfele": "460fe34854fd2fe9b0836640cf65fd27b9c1467da5d64cdaaf465d1eb225435d",
+      "muted-guitar": "0b5928ca97f1eb78850e40d313c433e3f0bfa88b27a4df829fd9d531c03a7eaf",
+      "rosewood-harp": "4fc85aa52311ba547fe394b453ed73598aa47bbe22d6985b17705a2ddd1705eb",
+      "sitar-dawn": "7ea3171c0bb859689a0fedcc8c38b51cc83486016daa8229a79f5094960c2c94",
+      "steel-shimmer": "2eeb22966a1fd2ad6f1fe967f0a6764f72445419d2ec5017d2b3eb17d043fe5a"
+    },
+    "drift": {
+      "deep-exhale": "ee62694035758a6814034e41182eb7058a6eed2f80fa4bebcd7fa7f9a1c526a1",
+      "desert-flute": "34e6a59a1b39cdb8fba35e45db6509f67e76a4bb1fa059c49ba605a50c2d9f39",
+      "glass-wind": "af46066d943b57d60ae50cdf68500fe96856c5957e8e670f9bbe7ce45e969680",
+      "howling-pass": "85053aeaa009eb200e739ff18fdd74490c02dc5f23ecb3cd29b655ad2008c284",
+      "monsoon-breath": "762a44c9c5019a02de1cb560cc04370ac7d07a0ab1d4f4e415c39150afca7593",
+      "squall-choir": "c0f7653c30f4c00c9bc63d1b73f5e9aa55a50a802ff23580c90481feb9b72230",
+      "vowel-sweep": "4084ee428804e9f3b7674461dd0167f782c52ff8cc77182458a7da5c2d3b84ef",
+      "whisper-field": "7d34f73bcc0c582e672c947ea7539664df20ab815af15d563cefdb748f56c1dd"
+    }
+  }
+}

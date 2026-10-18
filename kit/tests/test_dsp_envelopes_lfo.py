@@ -128,6 +128,15 @@ def test_seeded_random_lfos_repeat_and_are_chunking_equivalent(waveform: str) ->
     assert np.max(np.abs(reference)) <= 1
 
 
+@pytest.mark.parametrize("waveform", ("sine", "triangle", "saw", "square", "sample_hold", "smooth_random"))
+def test_lfo_peek_matches_the_next_sample_without_advancing(waveform: str) -> None:
+    oscillator = Lfo(sample_rate=1_000, rate=4, waveform=waveform, seed=11, phase=0.25)
+    phase = oscillator.phase
+    expected = oscillator.peek()
+    assert oscillator.phase == phase
+    assert oscillator.process(1)[0] == pytest.approx(expected, abs=1e-7)
+
+
 def test_lfo_rate_validation_is_atomic_and_reset_restarts_seeded_state() -> None:
     oscillator = Lfo(sample_rate=1_000, rate=4, waveform="smooth_random", seed=11)
     first = oscillator.process(256)

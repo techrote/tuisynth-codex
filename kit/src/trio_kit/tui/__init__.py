@@ -5,6 +5,7 @@ from trio_kit.tui.canvas import Canvas, Cell, HitMap, HitRegion, Rect
 from trio_kit.tui.mouse import MouseInput, MouseRouter
 from trio_kit.tui.piano import PianoWidget
 from trio_kit.tui.sequencer import SequencerWidget
+from trio_kit.tui.modulation import ModulationWidget
 from trio_kit.tui.widgets import (
     Button,
     Choice,
@@ -36,6 +37,7 @@ __all__ = [
     "Meter",
     "MouseInput",
     "MouseRouter",
+    "ModulationWidget",
     "ParamWidget",
     "PianoWidget",
     "SequencerWidget",

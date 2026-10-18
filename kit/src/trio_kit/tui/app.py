@@ -183,6 +183,7 @@ class CanvasApp:
             "delete": "delete",
             "space": "space",
             "f15": "s-f3",
+            "f16": "s-f4",
             "any": "any",
             "controlq": "c-q",
             "controlp": "c-p",

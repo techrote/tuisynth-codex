@@ -9,7 +9,7 @@ from collections import deque
 from collections.abc import Mapping, Sequence
 from weakref import WeakKeyDictionary
 
-from trio_kit.tui import Canvas, Rect, SequencerWidget
+from trio_kit.tui import Canvas, ModulationWidget, Rect, SequencerWidget
 from trio_kit.tui.mouse import MouseInput
 from trio_kit.tui.widgets import Choice, Fader, ListBox, Tabs, Widget
 
@@ -326,7 +326,9 @@ class _AuroraView:
         self.library_presets: ListBox | None = None
         self.library_skins: ListBox | None = None
         self.sequencer: SequencerWidget | None = None
+        self.modulation: ModulationWidget | None = None
         self.sequencer_open = False
+        self.modulation_open = False
         self._waterfall: deque[tuple[float, ...]] = deque(maxlen=8)
         self._last_waterfall_row = 0.0
 
@@ -335,6 +337,22 @@ class _AuroraView:
         return SCREEN_NAMES[self.screen_index]
 
     def on_screen(self, key: str, shell) -> None:
+        if key == "mod-return":
+            self.modulation_open = False
+            previous = shell._screen_before_modulation
+            target = previous if previous in {"f2", "f3", "f4", "f5"} else "f2"
+            shell.current_screen = target
+            self.on_screen(target, shell)
+            return
+        if key in {"s-f4", "shift-f4"}:
+            self.modulation_open = True
+            self.sequencer_open = False
+            self._select_screen(self.screen_index, notify=False)
+            if self.modulation is not None:
+                self.modulation.visible = True
+                shell.widgets.focus(self.modulation.tag)
+            shell.invalidate()
+            return
         if key == "seq-return":
             self.sequencer_open = False
             previous = shell._screen_before_sequencer
@@ -343,6 +361,7 @@ class _AuroraView:
             self.on_screen(target, shell)
             return
         if key in {"s-f3", "shift-f3"}:
+            self.modulation_open = False
             self.sequencer_open = True
             self._select_screen(2, notify=False)
             if self.sequencer is not None:
@@ -350,6 +369,7 @@ class _AuroraView:
             shell.invalidate()
             return
         if key.startswith("f") and key[1:].isdigit():
+            self.modulation_open = False
             self.sequencer_open = False
             index = min(3, max(0, int(key[1:]) - 2))
             self._select_screen(index, notify=False)
@@ -363,15 +383,17 @@ class _AuroraView:
             self.tabs.selected = self.screen_index
         visible = self.screen
         if self.painter is not None:
-            self.painter.visible = visible in {"play", "shape"}
+            self.painter.visible = not self.modulation_open and visible in {"play", "shape"}
         for tag, widget in self.controls.items():
-            widget.visible = tag.startswith(visible + ":")
+            widget.visible = not self.modulation_open and tag.startswith(visible + ":")
         if self.library_presets is not None:
-            self.library_presets.visible = visible == "library"
+            self.library_presets.visible = not self.modulation_open and visible == "library"
         if self.library_skins is not None:
-            self.library_skins.visible = visible == "library"
+            self.library_skins.visible = not self.modulation_open and visible == "library"
         if self.sequencer is not None:
-            self.sequencer.visible = self.sequencer_open
+            self.sequencer.visible = not self.modulation_open and self.sequencer_open
+        if self.modulation is not None:
+            self.modulation.visible = self.modulation_open
         if notify:
             self.shell.current_screen = f"f{self.screen_index + 2}"
             self.shell.widgets.clear_focus()
@@ -472,6 +494,10 @@ class _AuroraView:
         self.sequencer = SequencerWidget(shell, seq_bounds, "spectral")
         self.sequencer.visible = self.screen == "space"
         widgets.append(self.sequencer)
+        mod_bounds = Rect(2, 3, max(1, width - 4), max(10, height - 3))
+        self.modulation = ModulationWidget(shell, mod_bounds, "spectral")
+        self.modulation.visible = self.modulation_open
+        widgets.append(self.modulation)
         for page, keys in screen_keys.items():
             bounds = self._controls_layout(width, height, page, len(keys))
             for index, (key, rect) in enumerate(zip(keys, bounds)):
@@ -580,6 +606,9 @@ class _AuroraView:
 
     def draw(self, canvas: Canvas, shell) -> None:
         del shell
+        if self.modulation_open:
+            canvas.text(2, 4, "AURORA MOD · spectral patch field and post-tone pedals", "muted", max_width=canvas.width - 4)
+            return
         if self.screen == "play":
             compact = canvas.width < 100 or canvas.height < 30
             water_rows = 3 if compact else 4
@@ -624,6 +653,8 @@ class _AuroraView:
     def footer(self, shell) -> str:
         if shell.overlay:
             return shell._footer()
+        if self.modulation_open:
+            return "MOD · click route · wheel amount · drag pedals · R source · T target · +/- amount · B bypass · Del clear · Esc return"
         if self.screen == "play":
             return "PLAY · paint/R erase · wheel · Tab · F2-F5 · F6 skin · F8 presets · F9 · ^Q"
         if self.screen == "shape":
@@ -633,7 +664,7 @@ class _AuroraView:
         return "LIBRARY · Tab list · arrows preview · Enter apply · F8 actions · F2-F5 · ^Q"
 
     def refresh_when(self, shell) -> bool:
-        return self.screen == "play" and shell.engine.telemetry().active_voices > 0
+        return not self.modulation_open and self.screen == "play" and shell.engine.telemetry().active_voices > 0
 
 
 class AuroraUI:

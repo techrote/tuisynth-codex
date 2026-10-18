@@ -23,14 +23,16 @@ class Lfo:
         waveform: str = "sine",
         seed: int = 0,
         phase: float = 0.0,
+        max_rate: float = 20.0,
     ) -> None:
         self.sample_rate = positive_sample_rate(sample_rate)
         if not isinstance(waveform, str) or waveform not in _WAVEFORMS:
             raise ValueError(f"waveform must be one of {tuple(sorted(_WAVEFORMS))}")
         if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
             raise ValueError("seed must be a non-negative integer")
+        self.max_rate = finite_number(max_rate, "max_rate", minimum=20, maximum=self.sample_rate / 2)
         self.waveform = waveform
-        self._rate = finite_number(rate, "rate", minimum=0.01, maximum=20)
+        self._rate = finite_number(rate, "rate", minimum=0.01, maximum=self.max_rate)
         if self._rate > self.sample_rate / 2:
             raise ValueError("rate must not exceed the Nyquist frequency")
         self._initial_phase = finite_number(phase, "phase", minimum=0, maximum=1) % 1.0
@@ -51,8 +53,24 @@ class Lfo:
     def rate(self) -> float:
         return self._rate
 
+    def peek(self) -> float:
+        """Return the waveform value at the current phase without advancing state."""
+        phase = self._phase
+        if self.waveform == "sine":
+            return math.sin(2.0 * math.pi * phase)
+        if self.waveform == "triangle":
+            return 1.0 - 4.0 * abs(phase - 0.5)
+        if self.waveform == "saw":
+            return 2.0 * phase - 1.0
+        if self.waveform == "square":
+            return 1.0 if phase < 0.5 else -1.0
+        if self.waveform == "sample_hold":
+            return self._random_current
+        smooth = phase * phase * (3.0 - 2.0 * phase)
+        return self._random_current + (self._random_next - self._random_current) * smooth
+
     def set_rate(self, rate: float) -> None:
-        normalized = finite_number(rate, "rate", minimum=0.01, maximum=20)
+        normalized = finite_number(rate, "rate", minimum=0.01, maximum=self.max_rate)
         if normalized > self.sample_rate / 2:
             raise ValueError("rate must not exceed the Nyquist frequency")
         self._rate = normalized

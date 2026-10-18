@@ -13,6 +13,7 @@ from trio_kit.constants import MAX_EVENT_QUEUE
 from trio_kit.events import NoteOff, NoteOn
 from trio_kit.params import ParamSnapshot
 from trio_kit.engine.protocols import Voice
+from trio_kit.modulation import ModulationProcessor
 
 
 @dataclass(slots=True)
@@ -24,12 +25,18 @@ class _VoiceSlot:
     released: bool = False
     sustained: bool = False
     last_level: float = 0.0
+    pitch: float = 60.0
+    velocity: float = 1.0
+    started_frame: int = 0
+    released_frame: int | None = None
+    last_params: ParamSnapshot | None = None
 
 
 @dataclass(slots=True)
 class _FadeTail:
     voice: Voice
     fade_frames: int
+    params: ParamSnapshot
     position: int = 0
     last_level: float = 0.0
 
@@ -74,6 +81,7 @@ class VoiceManager:
         self._voice_counter = 0
         self._sustain = False
         self._max_tails = max_tails
+        self._modulation: ModulationProcessor | None = None
 
     @property
     def active_count(self) -> int:
@@ -114,6 +122,8 @@ class VoiceManager:
     def _remove_finished(self) -> None:
         for slot in self._slots:
             if slot.note_id is not None and self._finished(slot.voice):
+                if self._modulation is not None:
+                    self._modulation.note_finished(slot.note_id)
                 self._by_note.pop(slot.note_id, None)
                 self._clear_slot(slot)
 
@@ -126,6 +136,11 @@ class VoiceManager:
         slot.released = False
         slot.sustained = False
         slot.last_level = 0.0
+        slot.pitch = 60.0
+        slot.velocity = 1.0
+        slot.started_frame = 0
+        slot.released_frame = None
+        slot.last_params = None
 
     @staticmethod
     def _rms(buffer: np.ndarray) -> float:
@@ -141,11 +156,20 @@ class VoiceManager:
             return
         if slot.note_id is not None:
             self._by_note.pop(slot.note_id, None)
+            if self._modulation is not None:
+                self._modulation.note_finished(slot.note_id)
         if not slot.released:
             voice.release()
         fade_frames = max(1, int(round(self.sample_rate * milliseconds / 1000.0)))
         if not self._finished(voice):
-            self._tails.append(_FadeTail(voice, fade_frames, last_level=slot.last_level))
+            # A released note's modulation state is retired immediately, but
+            # its anti-click tail remains audible. Freeze the final effective
+            # snapshot so note-scoped parameters do not jump to global values.
+            if slot.last_params is None:
+                raise RuntimeError("active voice has no parameter snapshot")
+            self._tails.append(
+                _FadeTail(voice, fade_frames, slot.last_params, last_level=slot.last_level)
+            )
             self._trim_tails()
         self._clear_slot(slot)
 
@@ -184,11 +208,19 @@ class VoiceManager:
             return min(released, key=lambda slot: (slot.last_level, slot.order)), True
         return min(active_slots, key=lambda slot: slot.order), True
 
-    def note_on(self, event: NoteOn, params: ParamSnapshot) -> Voice:
+    def note_on(
+        self,
+        event: NoteOn,
+        params: ParamSnapshot,
+        *,
+        modulation: ModulationProcessor | None = None,
+        frame_index: int = 0,
+    ) -> Voice:
         if not isinstance(event, NoteOn):
             raise TypeError("note_on requires a NoteOn event")
         if event.note_id in self._by_note:
             raise ValueError(f"note_id {event.note_id} is already active")
+        self._modulation = modulation or self._modulation
         slot, occupied = self._select_slot()
         voice = self._new_voice()
         if occupied:
@@ -201,31 +233,46 @@ class VoiceManager:
         slot.released = False
         slot.sustained = False
         slot.last_level = 0.0
+        slot.pitch = float(event.pitch)
+        slot.velocity = float(event.velocity)
+        slot.started_frame = frame_index
+        slot.released_frame = None
         self._by_note[event.note_id] = slot
-        voice.start(float(event.pitch), float(event.velocity), params)
+        voice_params = params
+        if modulation is not None:
+            voice_params = modulation.voice_snapshot(
+                params, note_id=event.note_id, pitch=slot.pitch, velocity=slot.velocity,
+                age_frames=0, released_frames=None, frames=0,
+            )
+        slot.last_params = voice_params
+        voice.start(slot.pitch, slot.velocity, voice_params)
         return voice
 
-    def note_off(self, event: NoteOff) -> bool:
+    def note_off(self, event: NoteOff, *, frame_index: int | None = None) -> bool:
         if not isinstance(event, NoteOff):
             raise TypeError("note_off requires a NoteOff event")
         slot = self._by_note.get(event.note_id)
         if slot is None or not slot.key_down:
             return False
         slot.key_down = False
+        slot.released_frame = frame_index if frame_index is not None else slot.started_frame
         if self._sustain:
             slot.sustained = True
+            slot.released_frame = None
         else:
-            self._release(slot)
+            self._release(slot, frame_index)
         return True
 
     @staticmethod
-    def _release(slot: _VoiceSlot) -> None:
+    def _release(slot: _VoiceSlot, frame_index: int | None = None) -> None:
         if slot.voice is not None and not slot.released:
             slot.voice.release()
+        if frame_index is not None:
+            slot.released_frame = frame_index
         slot.released = True
         slot.sustained = False
 
-    def set_sustain(self, on: bool) -> None:
+    def set_sustain(self, on: bool, *, frame_index: int | None = None) -> None:
         if not isinstance(on, bool):
             raise ValueError("sustain state must be a boolean")
         if self._sustain == on:
@@ -234,7 +281,7 @@ class VoiceManager:
         if not on:
             for slot in self._slots:
                 if slot.sustained:
-                    self._release(slot)
+                    self._release(slot, frame_index)
 
     def panic(self) -> None:
         self._sustain = False
@@ -260,22 +307,46 @@ class VoiceManager:
         if not callable(retarget):
             return False
         retarget(normalized_pitch)
+        slot.pitch = normalized_pitch
         return True
 
-    def render(self, frames: int, params: ParamSnapshot) -> np.ndarray:
+    def render(
+        self,
+        frames: int,
+        params: ParamSnapshot,
+        *,
+        modulation: ModulationProcessor | None = None,
+        frame_index: int = 0,
+    ) -> np.ndarray:
         if isinstance(frames, bool) or not isinstance(frames, int) or frames < 0:
             raise ValueError("frames must be a non-negative integer")
         output = np.zeros((frames, 2), dtype=np.float32)
         if frames == 0:
             return output
+        self._modulation = modulation or self._modulation
         self._remove_finished()
         for slot in self._slots:
             if slot.note_id is None or slot.voice is None:
                 continue
-            buffer = _voice_buffer(slot.voice, frames, params)
+            voice_params = params
+            if modulation is not None and slot.note_id is not None:
+                released_frames = None if slot.released_frame is None else max(0, frame_index - slot.released_frame)
+                voice_params = modulation.voice_snapshot(
+                    params,
+                    note_id=slot.note_id,
+                    pitch=slot.pitch,
+                    velocity=slot.velocity,
+                    age_frames=max(0, frame_index - slot.started_frame),
+                    released_frames=released_frames,
+                    frames=frames,
+                )
+            slot.last_params = voice_params
+            buffer = _voice_buffer(slot.voice, frames, voice_params)
             output += buffer
             slot.last_level = self._rms(buffer)
             if self._finished(slot.voice):
+                if modulation is not None and slot.note_id is not None:
+                    modulation.note_finished(slot.note_id)
                 self._by_note.pop(slot.note_id, None)
                 self._clear_slot(slot)
 
@@ -284,7 +355,7 @@ class VoiceManager:
             if tail.remaining <= 0 or self._finished(tail.voice):
                 continue
             count = min(frames, tail.remaining)
-            buffer = _voice_buffer(tail.voice, count, params)
+            buffer = _voice_buffer(tail.voice, count, tail.params)
             gains = np.maximum(
                 0.0,
                 1.0 - (tail.position + np.arange(count, dtype=np.float64)) / tail.fade_frames,
@@ -299,6 +370,9 @@ class VoiceManager:
         return output
 
     def reset(self) -> None:
+        if self._modulation is not None:
+            for note_id in self._by_note:
+                self._modulation.note_finished(note_id)
         self._by_note.clear()
         self._tails.clear()
         self._sustain = False

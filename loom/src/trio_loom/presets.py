@@ -5,6 +5,7 @@ from __future__ import annotations
 from importlib.resources import files
 
 from trio_kit.preset import Preset, parse_preset
+from trio_kit.seq import validate_extras
 from trio_loom.params import loom_registry
 
 
@@ -13,7 +14,7 @@ def load_factory_presets() -> tuple[Preset, ...]:
     root = files("trio_loom").joinpath("data", "presets")
     registry = loom_registry()
     presets = tuple(
-        parse_preset(path.read_text(encoding="utf-8"), "loom", registry)
+        parse_preset(path.read_text(encoding="utf-8"), "loom", registry, lambda extras: validate_extras(extras, registry=registry))
         for path in sorted(root.iterdir(), key=lambda item: item.name)
         if path.name.endswith(".json")
     )

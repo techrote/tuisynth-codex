@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 import math
+import threading
 import time
 from types import MappingProxyType
 from typing import Any
@@ -30,6 +31,8 @@ from trio_kit.events import (
 )
 from trio_kit.engine.master import MasterBus
 from trio_kit.engine.voices import VoiceManager
+from trio_kit.dsp.fx_rack import FxRack
+from trio_kit.modulation import ModulationConfig, ModulationProcessor, validate_modulation
 from trio_kit.params import ParamError, ParamRegistry, ParamSnapshot, ParamState
 from trio_kit.seq import SequenceConfig, SequencerProcessor
 
@@ -143,6 +146,12 @@ class Engine:
         self._closed = False
         self._absolute_frame = 0
         self.sequencer = SequencerProcessor(sample_rate, seed=seed)
+        self.modulation = ModulationProcessor(self.registry, sample_rate, seed)
+        self.fx_rack = FxRack(sample_rate, seed)
+        self._shared_config_lock = threading.Lock()
+        modulation_setter = getattr(instrument, "set_modulation_processor", None)
+        if callable(modulation_setter):
+            modulation_setter(self.modulation)
         seed_setter = getattr(instrument, "set_engine_seed", None)
         if callable(seed_setter):
             seed_setter(seed)
@@ -209,45 +218,60 @@ class Engine:
             self._last_error = str(error)[:256]
             snapshot = self._param_state.snapshot
 
-        on_block_boundary = getattr(self.instrument, "on_block_boundary", None)
-        if callable(on_block_boundary):
-            try:
-                on_block_boundary(snapshot)
-            except Exception as error:
-                self._last_error = f"instrument block-boundary callback failed: {error}"[:256]
-
-        # Optional mode-dependent polyphony is committed at the same safe point as
-        # instrument parameter state. The manager keeps its constructor capacity
-        # preallocated and fades any voices removed by a downward limit change.
-        voice_limit = getattr(self.instrument, "voice_limit", None)
-        if callable(voice_limit):
-            try:
-                requested_limit = voice_limit(snapshot)
-                self.voice_manager.set_limit(min(requested_limit, self.voice_manager.max_voices))
-            except Exception as error:
-                self._last_error = f"instrument voice-limit callback failed: {error}"[:256]
-        self._notify_instrument_voice_count()
-
         try:
             dispatch = list(self.sequencer.process_block(self._absolute_frame, dispatch))
         except Exception as error:
             self._last_error = f"sequencer block scheduling failed: {error}"[:256]
+
+        try:
+            tempo = self.sequencer.config.tempo
+            with self._shared_config_lock:
+                effect_sources = self.fx_rack.begin_block(self.block, tempo)
+                self.modulation.begin_block(self._absolute_frame, self.block, tempo=tempo, fx_sources=effect_sources)
+                self.fx_rack.set_fx_overrides(self.modulation.fx_overrides)
+            effective_snapshot = self.modulation.apply_global(snapshot)
+        except Exception as error:
+            self._last_error = f"modulation block setup failed: {error}"[:256]
+            effective_snapshot = snapshot
+
+        # Instrument-owned block state (for example DRIFT's formant bank) must
+        # see the same global modulation snapshot as its voices and bus.
+        on_block_boundary = getattr(self.instrument, "on_block_boundary", None)
+        if callable(on_block_boundary):
+            try:
+                on_block_boundary(effective_snapshot)
+            except Exception as error:
+                self._last_error = f"instrument block-boundary callback failed: {error}"[:256]
+
+        # Optional mode-dependent polyphony is committed at the same safe point
+        # as effective instrument parameters. Capacity remains preallocated and
+        # voices removed by a downward change fade through the bounded tail pool.
+        voice_limit = getattr(self.instrument, "voice_limit", None)
+        if callable(voice_limit):
+            try:
+                requested_limit = voice_limit(effective_snapshot)
+                self.voice_manager.set_limit(min(requested_limit, self.voice_manager.max_voices))
+            except Exception as error:
+                self._last_error = f"instrument voice-limit callback failed: {error}"[:256]
+        self._notify_instrument_voice_count()
 
         result = np.zeros((self.block, 2), dtype=np.float32)
         cursor = 0
         for event in sorted(dispatch, key=lambda item: getattr(item, "frame", 0)):
             frame = int(getattr(event, "frame", 0))
             if frame > cursor:
-                result[cursor:frame] = self._render_segment(frame - cursor, snapshot)
+                result[cursor:frame] = self._render_segment(frame - cursor, effective_snapshot, frame_index=self._absolute_frame + cursor)
                 cursor = frame
-            self._dispatch(event, snapshot)
+            self._dispatch(event, effective_snapshot, frame_index=self._absolute_frame + frame)
         if cursor < self.block:
-            result[cursor:] = self._render_segment(self.block - cursor, snapshot)
+            result[cursor:] = self._render_segment(self.block - cursor, effective_snapshot, frame_index=self._absolute_frame + cursor)
         resets_before = self.master.nonfinite_resets
         result = self.master.process(result)
         if self.master.nonfinite_resets != resets_before:
             self.voice_manager.reset()
             self.sequencer.reset()
+            self.modulation.reset()
+            self.fx_rack.reset()
             reset = getattr(self.instrument, "reset", None)
             if callable(reset):
                 try:
@@ -260,31 +284,45 @@ class Engine:
         self._absolute_frame += self.block
         return result
 
-    def _render_segment(self, frames: int, params: ParamSnapshot) -> np.ndarray:
-        mix = self.voice_manager.render(frames, params)
-        process_bus = getattr(self.instrument, "process_bus", None)
-        if callable(process_bus):
-            result = process_bus(mix, params)
+    def _render_segment(self, frames: int, params: ParamSnapshot, *, frame_index: int = 0) -> np.ndarray:
+        mix = self.voice_manager.render(frames, params, modulation=self.modulation, frame_index=frame_index)
+        pre_fx = getattr(self.instrument, "process_pre_fx", None)
+        post_fx = getattr(self.instrument, "process_post_fx", None)
+        if callable(pre_fx) and callable(post_fx):
+            result = pre_fx(mix, params)
             if result is not None:
                 mix = np.asarray(result, dtype=np.float32)
+            process_fx_unit = getattr(self.instrument, "process_fx_unit", None)
+            shared_fx = (lambda name, buffer: process_fx_unit(name, buffer, params)) if callable(process_fx_unit) else None
+            mix = self.fx_rack.process_ordered(mix, shared_fx)
+            result = post_fx(mix, params)
+            if result is not None:
+                mix = np.asarray(result, dtype=np.float32)
+        else:
+            process_bus = getattr(self.instrument, "process_bus", None)
+            if callable(process_bus):
+                result = process_bus(mix, params)
+                if result is not None:
+                    mix = np.asarray(result, dtype=np.float32)
+            mix = self.fx_rack.process(mix)
         if mix.shape != (frames, 2):
             raise ValueError(f"instrument bus must preserve shape ({frames}, 2)")
         return mix
 
-    def _dispatch(self, event: Event, params: ParamSnapshot) -> None:
+    def _dispatch(self, event: Event, params: ParamSnapshot, *, frame_index: int = 0) -> None:
         if isinstance(event, NoteOn):
-            self.voice_manager.note_on(event, params)
+            self.voice_manager.note_on(event, params, modulation=self.modulation, frame_index=frame_index)
             self._notify_instrument_voice_count()
             return
         if isinstance(event, NoteOff):
-            self.voice_manager.note_off(event)
+            self.voice_manager.note_off(event, frame_index=frame_index)
             self._notify_instrument_voice_count()
             return
         if isinstance(event, RetargetNote):
             self.voice_manager.retarget(event.note_id, event.pitch)
             return
         if isinstance(event, Sustain):
-            self.voice_manager.set_sustain(event.on)
+            self.voice_manager.set_sustain(event.on, frame_index=frame_index)
             self._notify_instrument_voice_count()
             return
         if isinstance(event, Panic):
@@ -295,15 +333,18 @@ class Engine:
             self._instrument_event(event.name, event.payload)
             return
         if isinstance(event, PitchBend):
+            self.modulation.on_event("pitch_bend", (event.semitones,))
             self._instrument_event("pitch_bend", (event.semitones,))
             return
         if isinstance(event, ModWheel):
+            self.modulation.on_event("mod_wheel", (event.value,))
             self._instrument_event("mod_wheel", (event.value,))
             return
         if isinstance(event, ControlChange):
             self._instrument_event("control_change", (event.cc, event.value))
             return
         if isinstance(event, Transport):
+            self.modulation.on_event("transport", (event.tempo, event.swing, event.playing))
             self._instrument_event("transport", (event.tempo, event.swing, event.playing))
 
     def _notify_instrument_voice_count(self) -> None:
@@ -324,6 +365,7 @@ class Engine:
         getter = getattr(self.instrument, "get_extras", None)
         extras = dict(getter()) if callable(getter) else {}
         extras["sequencer"] = self.sequencer.config.to_dict()
+        extras["modulation"] = self.modulation.requested_config.to_dict()
         return extras
 
     def set_extras(self, extras: Mapping[str, object], *, replace: bool = False) -> None:
@@ -331,11 +373,25 @@ class Engine:
             raise ValueError("preset extras must be an object")
         private = dict(extras)
         shared = private.pop("sequencer", None)
-        if shared is not None:
-            config = SequenceConfig.from_dict(shared)
-            self.sequencer.set_config(config)
+        modulation = private.pop("modulation", None)
+        shared_config = SequenceConfig.from_dict(shared) if shared is not None else None
+        modulation_config = (
+            ModulationConfig.from_dict(validate_modulation(modulation, registry=self.registry))
+            if modulation is not None else None
+        )
+        if shared_config is not None:
+            self.sequencer.set_config(shared_config)
         elif replace:
             self.sequencer.set_config(SequenceConfig())
+        if modulation_config is not None:
+            with self._shared_config_lock:
+                self.modulation.set_config(modulation_config)
+                self.fx_rack.set_config(modulation_config)
+        elif replace:
+            defaults = ModulationConfig.defaults()
+            with self._shared_config_lock:
+                self.modulation.set_config(defaults)
+                self.fx_rack.set_config(defaults)
         setter = getattr(self.instrument, "set_extras", None)
         if not callable(setter):
             if private:
@@ -391,6 +447,8 @@ class Engine:
         self.voice_manager.reset()
         self.event_queue.drain()
         self.master.reset()
+        self.modulation.reset()
+        self.fx_rack.reset()
         close = getattr(self.instrument, "close", None)
         if callable(close):
             close()

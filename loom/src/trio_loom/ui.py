@@ -12,7 +12,7 @@ from weakref import WeakKeyDictionary
 from trio_kit.events import Event, InstrumentEvent, NoteOff, NoteOn, Panic, ParamSet, RetargetNote
 from trio_kit.params import ParamSpec
 from trio_kit.shell import InstrumentSpec, Shell
-from trio_kit.tui import Canvas, Rect, SequencerWidget
+from trio_kit.tui import Canvas, ModulationWidget, Rect, SequencerWidget
 from trio_kit.tui.mouse import MouseInput
 from trio_kit.tui.widgets import ParamWidget, Widget
 from trio_loom.strum import DEFAULT_TUNING, StrumModel
@@ -196,7 +196,9 @@ class _View:
     surface: StringSurface | None = None
     sympathy: SympatheticColumn | None = None
     sequencer: SequencerWidget | None = None
+    modulation: ModulationWidget | None = None
     sequencer_visible: bool = False
+    modulation_visible: bool = False
     held: dict[int, float] = field(default_factory=dict)
     direct_ids: set[int] = field(default_factory=set)
     arp_ids: set[int] = field(default_factory=set)
@@ -513,7 +515,9 @@ class LoomUI:
         seq_height = max(4, min(9, height - (3 if compact else 4) - seq_y - 1))
         view.sequencer = SequencerWidget(shell, Rect(2, seq_y, width - 4, seq_height), "thread")
         view.sequencer.visible = view.sequencer_visible
-        result: list[Widget] = [view.surface, view.sympathy, view.sequencer]
+        view.modulation = ModulationWidget(shell, Rect(2, 3, width - 4, max(10, height - 3)), "thread")
+        view.modulation.visible = view.modulation_visible
+        result: list[Widget] = [view.surface, view.sympathy, view.sequencer, view.modulation]
         if compact:
             panel_y = 13
             widths = [(width - 4) // 5] * 5
@@ -548,10 +552,17 @@ class LoomUI:
             for widget in result:
                 if widget is not view.sequencer:
                     widget.visible = False
+        if view.modulation_visible:
+            for widget in result:
+                if widget is not view.modulation:
+                    widget.visible = False
         return tuple(result)
 
     def draw(self, canvas: Canvas, shell: Shell) -> None:
         view = self.view(shell)
+        if view.modulation_visible:
+            canvas.text(2, 2, "LOOM MOD · thread patch cords and ordered post-tone pedals", "muted", max_width=canvas.width - 4)
+            return
         compact = canvas.width < 100 or canvas.height < 30
         if compact:
             panel_y, panel_h = 13, 4
@@ -578,7 +589,25 @@ class LoomUI:
 
     def on_screen(self, screen: str, shell: Shell) -> None:
         view = self.view(shell)
+        if screen == "mod-return":
+            view.modulation_visible = False
+            previous = shell._screen_before_modulation
+            target = previous if previous in {"f2", "f3", "f4", "f5"} else "f2"
+            shell.current_screen = target
+            self.on_screen(target, shell)
+            return
+        if screen in {"s-f4", "shift-f4"}:
+            view.modulation_visible = True
+            view.sequencer_visible = False
+            if view.modulation is not None:
+                view.modulation.visible = True
+                shell.widgets.focus(view.modulation.tag)
+            for widget in shell.widgets.widgets:
+                widget.visible = widget is view.modulation
+            shell.invalidate()
+            return
         if screen == "seq-return":
+            view.modulation_visible = False
             view.sequencer_visible = False
             if view.sequencer is not None:
                 view.sequencer.visible = False
@@ -588,6 +617,7 @@ class LoomUI:
             self.on_screen(target, shell)
             return
         if screen in {"s-f3", "shift-f3"}:
+            view.modulation_visible = False
             view.sequencer_visible = True
             if view.sequencer is not None:
                 view.sequencer.visible = True
@@ -595,8 +625,11 @@ class LoomUI:
             shell.invalidate()
             return
         view.sequencer_visible = False
+        view.modulation_visible = False
         if view.sequencer is not None:
             view.sequencer.visible = False
+        if view.modulation is not None:
+            view.modulation.visible = False
         for widget in shell.widgets.widgets:
             if widget.tag.startswith("loom-"):
                 widget.visible = True
@@ -615,10 +648,13 @@ class LoomUI:
     def header(self, shell: Shell) -> str:
         telemetry = shell.engine.telemetry()
         logo = " ".join(shell.skins.current.art.get("logo", ("LOOM",)))
+        if self.view(shell).modulation_visible:
+            return f"≋ L O O M ≋  MODULATION · {shell.engine_preset_name} · {shell.skins.current_id}"
         return f"≋ L O O M ≋  {logo} · {shell.engine_preset_name} · {shell.skins.current_id} · {shell.midi_status} · {telemetry.active_voices}/{telemetry.max_voices}"
 
     def footer(self, shell: Shell) -> str:
-        del shell
+        if self.view(shell).modulation_visible:
+            return "MOD · click route · wheel amount · drag pedals · R source · T target · +/- amount · B bypass · Del clear · Esc return"
         return "F2 strings · F3 panels · Shift+F3 sequencer · F4 sympathy · F5 presets · F6 skin · F9 · ^Q"
 
     def help_rows(self, shell: Shell) -> tuple[str, ...]:

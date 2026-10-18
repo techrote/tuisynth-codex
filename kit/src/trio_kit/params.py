@@ -57,6 +57,7 @@ class ParamSpec:
     curve: str = "linear"
     modulatable: bool = False
     group: str = ""
+    modulation_scope: str = "global"
 
     def __post_init__(self) -> None:
         if not isinstance(self.key, str) or not _KEY_RE.fullmatch(self.key):
@@ -69,6 +70,10 @@ class ParamSpec:
             raise ParamError(self.key, "group must be a string")
         if not isinstance(self.modulatable, bool):
             raise ParamError(self.key, "modulatable must be a boolean")
+        if self.modulation_scope not in {"global", "voice", "both"}:
+            raise ParamError(self.key, "modulation_scope must be global, voice, or both")
+        if not self.modulatable and self.modulation_scope != "global":
+            raise ParamError(self.key, "modulation_scope is only meaningful for modulatable parameters")
 
         minimum = _number(self.minimum, self.key)
         maximum = _number(self.maximum, self.key)
