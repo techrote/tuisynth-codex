@@ -1,0 +1,18 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "drift",
+  "id": "vowel-sweep",
+  "name": "Vowel Sweep",
+  "params": {
+    "src.color": -0.12, "src.tone": 0.48, "src.breath": 0.22,
+    "gr.density": 53, "gr.size": 105, "gr.size_jit": 0.24,
+    "gr.pos_scatter": 0.38, "gr.pitch_scatter": 28, "fmt.vowel": 2.0,
+    "fmt.shift": 1.0, "fmt.q": 1.08, "fmt.mix": 0.91,
+    "field.amount": 0.72, "wind.gust": 0.3,
+    "wind.howl": 0.08, "wind.rate": 0.12, "fx.reverb.mix": 0.33,
+    "fx.delay.mix": 0.18, "master.level": 0.7
+  },
+  "extras": {},
+  "tags": ["vowel", "morph"],
+  "description": "A clear vowel cloud ready to move from A through E, I, O and U."
+}

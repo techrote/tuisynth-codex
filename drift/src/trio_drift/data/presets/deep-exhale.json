@@ -1,0 +1,21 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "drift",
+  "id": "deep-exhale",
+  "name": "Deep Exhale",
+  "params": {
+    "src.color": -0.82, "src.tone": 0.25, "src.breath": 0.78,
+    "gr.density": 18, "gr.size": 420, "gr.size_jit": 0.08,
+    "gr.pos": 0.72, "gr.pos_scatter": 0.18, "gr.spread": 0.35,
+    "gr.pitch_scatter": 6, "fmt.vowel": 4, "fmt.shift": 0.68,
+    "fmt.q": 0.52, "fmt.mix": 0.84, "field.amount": 0.25,
+    "wind.gust": 0.12, "wind.howl": 0.01,
+    "wind.rate": 0.025, "amp.a": 1.1, "amp.r": 5,
+    "fx.reverb.size": 1.52, "fx.reverb.mix": 0.43,
+    "fx.delay.time": 0.72, "fx.delay.feedback": 0.24,
+    "fx.delay.mix": 0.18, "master.level": 0.72
+  },
+  "extras": {},
+  "tags": ["breath", "low"],
+  "description": "A deep U-shaped breath that unfolds in slow, soft-edged grains."
+}

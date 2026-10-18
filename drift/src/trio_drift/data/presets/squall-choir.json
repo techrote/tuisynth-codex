@@ -1,0 +1,17 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "drift",
+  "id": "squall-choir",
+  "name": "Squall Choir",
+  "params": {
+    "src.color": -0.15, "src.tone": 0.42, "src.breath": 0.45,
+    "gr.density": 92, "gr.size": 120, "gr.size_jit": 0.6, "gr.pos_scatter": 0.65,
+    "gr.pitch_scatter": 34, "fmt.vowel": 0.1, "fmt.shift": 0.92, "fmt.q": 1.2,
+    "fmt.mix": 0.78, "field.amount": 0.9,
+    "wind.gust": 0.9, "wind.howl": 0.3, "wind.rate": 0.18,
+    "fx.reverb.size": 1.25, "fx.reverb.mix": 0.38, "master.level": 0.72
+  },
+  "extras": {},
+  "tags": ["choir", "storm"],
+  "description": "A dense chorus of breath and soft tones swept through a rising squall."
+}

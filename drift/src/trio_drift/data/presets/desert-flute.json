@@ -1,0 +1,18 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "drift",
+  "id": "desert-flute",
+  "name": "Desert Flute",
+  "params": {
+    "src.color": 0.1, "src.tone": 0.82, "src.breath": 0.12,
+    "gr.density": 28, "gr.size": 190, "gr.size_jit": 0.18, "gr.pos": 0.65,
+    "gr.pos_scatter": 0.16, "gr.spread": 0.32, "fmt.vowel": 3.1,
+    "fmt.shift": 0.78, "fmt.q": 0.82, "fmt.mix": 0.6,
+    "field.amount": 0.25, "wind.gust": 0.18, "wind.howl": 0.04,
+    "wind.rate": 0.07, "fx.reverb.size": 1.1, "fx.reverb.mix": 0.28,
+    "fx.delay.mix": 0.12, "master.level": 0.7
+  },
+  "extras": {},
+  "tags": ["flute", "warm"],
+  "description": "Sparse, tonal grains with a low vowel and a long, sunlit tail."
+}

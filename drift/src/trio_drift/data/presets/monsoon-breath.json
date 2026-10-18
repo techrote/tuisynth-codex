@@ -1,0 +1,19 @@
+{
+  "schema": "trio-preset/1",
+  "synth": "drift",
+  "id": "monsoon-breath",
+  "name": "Monsoon Breath",
+  "params": {
+    "src.color": -0.45, "src.tone": 0.08, "src.breath": 0.92,
+    "gr.density": 145, "gr.size": 66, "gr.size_jit": 0.72,
+    "gr.pos_scatter": 0.82, "gr.spread": 0.92, "gr.pitch_scatter": 110,
+    "fmt.vowel": 1.15, "fmt.shift": 1.18, "fmt.q": 0.74, "fmt.mix": 0.67,
+    "field.amount": 0.8, "wind.gust": 0.94,
+    "wind.howl": 0.12, "wind.rate": 0.3, "fx.reverb.size": 1.35,
+    "fx.reverb.mix": 0.32, "fx.delay.feedback": 0.42, "fx.delay.mix": 0.24,
+    "master.level": 0.65
+  },
+  "extras": {},
+  "tags": ["breath", "storm"],
+  "description": "A wide rain of breath grains with gusting movement and a soft vowel body."
+}

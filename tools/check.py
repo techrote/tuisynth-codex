@@ -149,6 +149,16 @@ def check_wheels(packages: Sequence[str]) -> None:
                     "assert len(load_factory_presets()) >= 8; "
                     "assert files('trio_loom').joinpath('data/presets/rosewood-harp.json').is_file()"
                 )
+            if package == "drift":
+                check_script += (
+                    "; from trio_drift import DriftInstrument, GrainPool, drift_registry, load_factory_presets; "
+                    "from importlib.resources import files; "
+                    "assert DriftInstrument and GrainPool and drift_registry; "
+                    "assert {preset.id for preset in load_factory_presets()} == "
+                    "{'squall-choir', 'desert-flute', 'monsoon-breath', 'howling-pass', "
+                    "'whisper-field', 'vowel-sweep', 'glass-wind', 'deep-exhale'}; "
+                    "assert files('trio_drift').joinpath('data/presets/squall-choir.json').is_file()"
+                )
             run_process(
                 [str(python), "-c", check_script],
                 label=f"installed {distribution} metadata and import smoke check",
@@ -178,6 +188,20 @@ def check_wheels(packages: Sequence[str]) -> None:
                     listed = {line.split("\t", maxsplit=1)[0] for line in preset_result.stdout.splitlines() if line}
                     if not required_presets <= listed:
                         raise CheckFailed(f"aurora preset listing omitted {sorted(required_presets - listed)}")
+                if package == "drift":
+                    preset_result = run_process(
+                        [str(venv_script(environment, command)), "--list-presets"],
+                        label="installed drift factory preset listing",
+                        cwd=workspace,
+                        capture=True,
+                    )
+                    required_presets = {
+                        "squall-choir", "desert-flute", "monsoon-breath", "howling-pass",
+                        "whisper-field", "vowel-sweep", "glass-wind", "deep-exhale",
+                    }
+                    listed = {line.split("\t", maxsplit=1)[0] for line in preset_result.stdout.splitlines() if line}
+                    if listed != required_presets:
+                        raise CheckFailed(f"drift preset listing differs from required set: {sorted(listed ^ required_presets)}")
 
 
 def make_parser() -> argparse.ArgumentParser:
