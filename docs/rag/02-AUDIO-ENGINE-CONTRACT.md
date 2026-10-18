@@ -134,6 +134,11 @@ Immutable dataclasses: `NoteOn(note_id, pitch, velocity, source, frame=0)`,
 - Randomness only through `numpy.random.Generator` instances seeded from `(seed, voice
   counter)`, so equal seeds and equal event streams give bit-identical float32 output on the
   same platform.
+- `EngineTelemetry.instrument` is a read-only mapping capped at 16 accepted fields. Keys are
+  strings capped at 64 characters; scalar values are strings (128 characters maximum), bools,
+  ints, `None`, or finite floats. Finite numeric lists/tuples of at most 64 values are copied
+  into immutable float tuples; invalid and oversized values are dropped. This supports small
+  bounded instrument visualizers without exposing mutable arrays through telemetry.
 
 ## DSP building blocks (TRIO-004)
 

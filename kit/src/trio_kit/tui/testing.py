@@ -49,6 +49,9 @@ class HeadlessApp:
         "end": "\x1b[F",
         "c-q": "\x11",
         "c-p": "\x10",
+        "c-r": "\x12",
+        "c-e": "\x05",
+        "c-o": "\x0f",
         "c-l": "\x0c",
         "c-z": "\x1a",
         "c-y": "\x19",
@@ -157,14 +160,18 @@ class HeadlessApp:
         release_code = buttons[button] + modifiers
         self._send(self._sgr(code, x, y) + self._sgr(release_code, x, y, "m"), events=2)
 
-    def drag(self, path: Iterable[tuple[int, int]], *, shift: bool = False, control: bool = False, alt: bool = False) -> None:
+    def drag(self, path: Iterable[tuple[int, int]], *, button: str = "left", shift: bool = False, control: bool = False, alt: bool = False) -> None:
         points = tuple(path)
         if not points:
             raise ValueError("drag path must contain at least one point")
+        buttons = {"left": 0, "middle": 1, "right": 2}
+        if button not in buttons:
+            raise ValueError("button must be left, middle, or right")
         modifiers = (4 if shift else 0) + (8 if alt else 0) + (16 if control else 0)
-        chunks = [self._sgr(modifiers, *points[0])]
-        chunks.extend(self._sgr(32 + modifiers, *point) for point in points[1:])
-        chunks.append(self._sgr(modifiers, *points[-1], ending="m"))
+        button_code = buttons[button]
+        chunks = [self._sgr(button_code + modifiers, *points[0])]
+        chunks.extend(self._sgr(32 + button_code + modifiers, *point) for point in points[1:])
+        chunks.append(self._sgr(button_code + modifiers, *points[-1], ending="m"))
         self._send(b"".join(chunks), events=len(points) + 1)
 
     def release(self, x: int, y: int, button: str = "left") -> None:

@@ -1,0 +1,61 @@
+schema = "md-editor-theme/1.1"
+id = "solar-wind"
+name = "SOLAR WIND"
+instrument = "aurora"
+fps = 24
+
+[palette]
+bg = "#180d23"
+fg = "#ffe8d2"
+muted = "#aa7790"
+plum = "#5b235f"
+magenta = "#e5488f"
+gold = "#ffc857"
+coral = "#ff765e"
+rose = "#ffb3c6"
+ice = "#83d9dd"
+white = "#fff8ee"
+black = "#08050d"
+
+[styles]
+background = { fg = "fg", bg = "bg" }
+text = { fg = "fg", bg = "bg" }
+muted = { fg = "muted", bg = "bg" }
+border = { fg = "plum", bg = "bg" }
+title = { fg = "gold", bg = "bg", bold = true }
+heading = { fg = "rose", bg = "bg", bold = true }
+accent = { fg = "magenta", bg = "bg", bold = true }
+status = { fg = "ice", bg = "bg" }
+warning = { fg = "gold", bg = "bg", bold = true }
+error = { fg = "coral", bg = "bg", bold = true }
+focused = { fg = "black", bg = "gold", bold = true }
+hover = { fg = "rose", bg = "#432144" }
+pressed = { fg = "black", bg = "coral", bold = true }
+selected = { fg = "white", bg = "#642b5b", bold = true }
+disabled = { fg = "muted", bg = "bg" }
+key_white = { fg = "fg", bg = "#f7e4db" }
+key_black = { fg = "rose", bg = "#29172d" }
+key_pressed = { fg = "black", bg = "gold", bold = true }
+meter_low = { fg = "plum", bg = "bg" }
+meter_mid = { fg = "magenta", bg = "bg" }
+meter_high = { fg = "gold", bg = "bg", bold = true }
+aurora_0 = { fg = "#5b235f", bg = "bg" }
+aurora_1 = { fg = "#e5488f", bg = "bg" }
+aurora_2 = { fg = "#ff765e", bg = "bg" }
+aurora_3 = { fg = "#ffc857", bg = "bg" }
+aurora_4 = { fg = "#fff0b0", bg = "bg", bold = true }
+
+[glyphs]
+density = [" ", ".", ":", "-", "=", "+", "*", "#", "%", "@"]
+idle = "."
+frame = "heavy"
+
+[ramps]
+aurora = ["#180d23", "#5b235f", "#e5488f", "#ff765e", "#ffc857"]
+
+[art]
+logo = "☼ A U R O R A ☼"
+sky = "·  ☼  ·  ✧  ·  ☼  ·"
+
+[fallbacks.ascii.glyphs]
+density = [" ", ".", ":", "+", "#"]

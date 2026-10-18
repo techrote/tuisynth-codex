@@ -67,10 +67,10 @@ class MouseRouter:
 
         if event.kind == "down" and event.button == "left" and hit is not None:
             self.capture = hit
+        elif event.kind == "right" and event.button == "right" and hit is not None:
+            self.capture = hit
 
         target = self.capture if self.capture is not None else hit
-        if event.kind == "right":
-            target = hit
         result = handler(target, event) if target is not None else None
 
         if event.kind == "up":

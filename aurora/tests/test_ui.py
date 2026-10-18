@@ -1,0 +1,215 @@
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import pytest
+
+from trio_aurora.instrument import aurora_spec
+from trio_aurora.ui import HarmonicPainter, SCREEN_NAMES, waterfall_column_levels
+from trio_kit.events import NoteOff, NoteOn
+from trio_kit.shell import Shell
+from trio_kit.skins import REQUIRED_ROLES, SkinLibrary
+from trio_kit.tui.testing import HeadlessApp
+
+
+SKINS = ("borealis", "solar-wind", "polar-night", "mono")
+SNAPSHOT_SIZES = ((100, 30), (80, 24))
+SNAPSHOT_SCREENS = ("play", "shape")
+
+
+def _shell(tmp_path: Path, skin: str = "mono") -> Shell:
+    return Shell(
+        aurora_spec(),
+        no_audio=True,
+        start_midi=False,
+        skin_id=skin,
+        data_dir=tmp_path,
+    )
+
+
+def test_factory_skins_have_no_warnings_and_define_aurora_roles(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    root = Path(__file__).parents[1] / "src" / "trio_aurora" / "data" / "skins"
+    library = SkinLibrary.for_instrument(
+        "aurora", data_dir=tmp_path, factory_dir=root, no_color=False, environ={}
+    )
+    assert library.ids == ("mono", "borealis", "polar-night", "solar-wind")
+    assert library.warnings == ()
+    for skin_id in SKINS[:-1]:
+        skin = library.select(skin_id)
+        assert set(REQUIRED_ROLES) <= set(skin.styles)
+        assert skin.instrument == "aurora"
+        assert len(skin.glyphs["density"]) >= 5
+        assert len(skin.ramp("aurora")) >= 2
+        assert "A U R O R A" in skin.art_block("logo")[0]
+
+
+def test_waterfall_levels_are_monotone_silent_and_frozen() -> None:
+    profile = tuple(index / 63 for index in range(64))
+    live = waterfall_column_levels(profile, active_voices=1, voice_rms=0.1, columns=32)
+    assert all(left <= right for left, right in zip(live, live[1:]))
+    assert max(live) > 0
+    lfo_live = waterfall_column_levels(
+        profile, active_voices=1, voice_rms=0.1, columns=32, envelope_level=4.0, lfo_level=1.0
+    )
+    quiet_lfo = waterfall_column_levels(
+        profile, active_voices=1, voice_rms=0.1, columns=32, envelope_level=4.0, lfo_level=0.0
+    )
+    assert max(lfo_live) > max(quiet_lfo) > 0
+    assert waterfall_column_levels(profile, active_voices=0, voice_rms=0.0, columns=32) == (0.0,) * 32
+    frozen_a = waterfall_column_levels(profile, active_voices=0, voice_rms=0.0, columns=32, frozen=True)
+    frozen_b = waterfall_column_levels(profile, active_voices=0, voice_rms=0.0, columns=32, frozen=True)
+    assert frozen_a == frozen_b
+    assert max(frozen_a) > 0
+
+
+def test_harmonic_extras_dirty_state_and_preset_round_trip(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    shell = _shell(tmp_path)
+    try:
+        shell._ensure_widgets(100, 30)
+        painter = next(widget for widget in shell.widgets.widgets if isinstance(widget, HarmonicPainter))
+        profile = [0.0] * 64
+        profile[0] = 1.0
+        assert shell.set_extras({"harmonics": profile})
+        assert shell.modified
+        assert painter.harmonics == profile
+        saved = shell.save_preset("Painted profile", preset_id="painted-profile")
+        assert not shell.modified
+        assert shell.set_extras({"harmonics": [0.25] * 64})
+        assert shell.modified
+        shell.load_preset(saved.id)
+        assert painter.harmonics == profile
+        assert not shell.modified
+        shell.engine.render(256)
+        assert shell.engine.get_extras()["harmonics"] == profile
+    finally:
+        shell.shutdown()
+
+
+def test_named_screens_piano_skin_cycle_and_quit_are_headless(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    shell = _shell(tmp_path, "borealis")
+    worker = shell.engine.instrument._thread
+    with HeadlessApp(size=(100, 30), app=shell.build_app()) as app:
+        first = app.screen_text()
+        assert "[PLAY]" in first
+        assert "AURORA WATERFALL" in first
+        assert shell.piano.octaves == 4
+        assert shell.piano.bounds.width == 84
+        for index, screen in enumerate(SCREEN_NAMES, start=2):
+            app.press(f"f{index}")
+            assert shell.current_screen == f"f{index}"
+            assert f"[{screen.upper()}]" in app.screen_text()
+        library = app.screen_text()
+        assert "PRESETS" in library and "SKINS" in library
+        previous_skin = shell.skins.current_id
+        app.press("f6")
+        assert shell.skins.current_id != previous_skin
+        app.screen_text()
+        key = shell.piano.key_bounds(60)
+        app.click(key.x + 1, key.bottom - 1)
+        events = shell.piano.events()
+        note_on = next(event for event in events if isinstance(event, NoteOn))
+        note_off = next(event for event in events if isinstance(event, NoteOff))
+        assert note_on.note_id == note_off.note_id
+        app.press("c-q")
+    assert shell._closed
+    assert worker is None or not worker.is_alive()
+
+
+def test_painter_real_sgr_drag_erase_wheel_and_keyboard_twins(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    shell = _shell(tmp_path, "borealis")
+    with HeadlessApp(size=(100, 30), app=shell.build_app()) as app:
+        app.press("f3")
+        app.screen_text()
+        painter = next(widget for widget in shell.widgets.widgets if isinstance(widget, HarmonicPainter))
+        assert painter.visible_bars == 64
+        start = painter.cell_for_index(4, height=0.75)
+        end = painter.cell_for_index(12, height=0.75)
+        app.drag((start, end))
+        assert all(painter.harmonics[index] == pytest.approx(0.75) for index in range(4, 13))
+        assert shell.modified
+
+        erase_start = painter.cell_for_index(4)
+        erase_end = painter.cell_for_index(12)
+        app.drag((erase_start, erase_end), button="right")
+        assert all(painter.harmonics[index] == 0.0 for index in range(4, 13))
+
+        index = 20
+        painter.selected = index
+        x, y = painter.cell_for_index(index)
+        before = painter.harmonics[index]
+        app.wheel(x, y, "up")
+        assert painter.harmonics[index] == pytest.approx(before + 0.05)
+        painter.selected = index
+        app.press("up")
+        assert painter.harmonics[index] == pytest.approx(before + 0.10)
+        app.press("c-e")
+        assert all(value == 0.0 for harmonic, value in enumerate(painter.harmonics) if harmonic % 2)
+        app.press("c-o")
+        assert all(value == 0.0 for harmonic, value in enumerate(painter.harmonics) if harmonic % 2 == 0)
+        app.press("c-r")
+        randomized = tuple(painter.harmonics)
+        assert len(set(randomized)) > 1
+        app.press("delete")
+        assert painter.harmonics[painter.selected] == 0.0
+        app.press("c-q")
+
+
+def test_snapshot_freeze_is_repeatable(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    frames = []
+    for _ in range(2):
+        shell = _shell(tmp_path, "solar-wind")
+        try:
+            frames.append(shell.snapshot(80, 24, screen="play"))
+        finally:
+            shell.shutdown()
+    assert frames[0] == frames[1]
+    assert "tables frozen" in frames[0]
+
+
+def test_library_selection_previews_presets_and_skins(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    shell = _shell(tmp_path, "borealis")
+    try:
+        with HeadlessApp(size=(100, 30), app=shell.build_app()) as app:
+            app.press("f5")
+            app.screen_text()
+            presets = next(widget for widget in shell.widgets.widgets if widget.tag == "aurora-library-presets")
+            skins = next(widget for widget in shell.widgets.widgets if widget.tag == "aurora-library-skins")
+            assert presets.handle_key("down")
+            assert shell.engine_preset_name == presets.items[presets.selected]
+            assert skins.handle_key("down")
+            assert shell.skins.current_id == skins.items[skins.selected]
+            app.press("c-q")
+    finally:
+        shell.shutdown()
+    assert shell._closed
+
+
+@pytest.mark.parametrize("skin", SKINS)
+@pytest.mark.parametrize("size", SNAPSHOT_SIZES)
+@pytest.mark.parametrize("screen", SNAPSHOT_SCREENS)
+def test_play_and_shape_golden_snapshots(tmp_path, monkeypatch, skin, size, screen) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    shell = _shell(tmp_path, skin)
+    try:
+        actual = shell.snapshot(*size, screen=screen)
+    finally:
+        shell.shutdown()
+    width, height = size
+    golden = Path(__file__).parent / "snapshots" / f"aurora-{screen}-{skin}-{width}x{height}.txt"
+    if os.environ.get("TRIO_UPDATE_SNAPSHOTS") == "1":
+        golden.parent.mkdir(parents=True, exist_ok=True)
+        golden.write_text(actual + "\n", encoding="utf-8", newline="\n")
+    assert golden.exists(), f"missing snapshot {golden.name}; run tools/check.py --package aurora --update-snapshots"
+    assert actual == golden.read_text(encoding="utf-8").rstrip("\n")
+    if screen == "play":
+        lines = actual.splitlines()
+        waterfall = next(index for index, line in enumerate(lines) if "AURORA WATERFALL" in line)
+        painter = next(index for index, line in enumerate(lines) if "HARMONICS" in line)
+        assert painter - waterfall == (5 if width >= 100 else 4)

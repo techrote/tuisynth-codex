@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import threading
 import time
+import weakref
 from collections.abc import Mapping, Sequence
 
 import numpy as np
@@ -60,6 +61,8 @@ class AuroraVoice:
         self.pitch = 60.0
         self.velocity = 0.0
         self.finished = True
+        self._last_envelope = 0.0
+        self._last_lfo = 0.0
         self._phase_primary = 0.0
         self._phase_detune_left = 0.0
         self._phase_detune_right = 0.0
@@ -90,6 +93,9 @@ class AuroraVoice:
         self._amp.gate_on(1.0)
         self._filter_env.gate_on(1.0)
         self.finished = False
+        self._last_envelope = 0.0
+        self._last_lfo = 0.0
+        self.instrument._update_voice_activity(self, 0.0, 0.0)
 
     def release(self) -> None:
         self._amp.gate_off()
@@ -150,6 +156,9 @@ class AuroraVoice:
         self._lfo.waveform = LFO_WAVES[int(params["lfo.wave"])]
         modulation = self._lfo.process(frames).astype(np.float64) * float(params["lfo.depth"])
         lfo_target = LFO_TARGETS[int(params["lfo.tgt"])]
+        self._last_envelope = float(np.mean(amp))
+        self._last_lfo = float(np.mean(np.abs(modulation)))
+        self.instrument._update_voice_activity(self, self._last_envelope, self._last_lfo)
 
         zone_pitch = self.pitch + 12.0 * float(params["osc.octave"])
         pitch: float | np.ndarray = zone_pitch
@@ -261,6 +270,7 @@ class AuroraInstrument:
         self._harmonics = tuple(validate_extras({})["harmonics"])
         self._table_cache = TableSetCache() if table_cache is None else table_cache
         self._condition = threading.Condition(threading.RLock())
+        self._voice_activity: weakref.WeakKeyDictionary[AuroraVoice, tuple[float, float]] = weakref.WeakKeyDictionary()
         self._thread: threading.Thread | None = None
         self._stop_worker = False
         self._prepared = False
@@ -317,7 +327,15 @@ class AuroraInstrument:
     def create_voice(self, rng: np.random.Generator) -> AuroraVoice:
         seed = int(rng.integers(0, 2**32, dtype=np.uint64))
         phase = float(rng.random())
-        return AuroraVoice(self, self.sample_rate, seed, phase)
+        voice = AuroraVoice(self, self.sample_rate, seed, phase)
+        with self._condition:
+            self._voice_activity[voice] = (0.0, 0.0)
+        return voice
+
+    def _update_voice_activity(self, voice: AuroraVoice, envelope: float, lfo: float) -> None:
+        with self._condition:
+            if voice in self._voice_activity:
+                self._voice_activity[voice] = (max(0.0, float(envelope)), max(0.0, float(lfo)))
 
     @staticmethod
     def _spectral_signature(
@@ -546,6 +564,30 @@ class AuroraInstrument:
             centroid = float(np.dot(frequencies, weights) / weight_sum) if weight_sum else 0.0
             peak_index = int(np.argmax(weights)) if weight_sum else 0
             peak_frequency = float(frequencies[peak_index]) if weight_sum else 0.0
+            active_voice_activity = [
+                values
+                for voice, values in self._voice_activity.items()
+                if not voice.finished and values[0] > 0.0
+            ]
+            envelope_sum = sum(values[0] for values in active_voice_activity)
+            lfo_level = (
+                sum(envelope * lfo for envelope, lfo in active_voice_activity) / envelope_sum
+                if envelope_sum > 0.0
+                else 0.0
+            )
+            table_magnitude: tuple[float, ...] = (0.0,) * 64
+            if self._active_tables is not None:
+                midi_pitch = 69.0 + 12.0 * math.log2(max(1.0, fundamental) / 440.0) if fundamental > 0.0 else 60.0
+                active_zone = self._active_tables.zone_for_pitch(midi_pitch)
+                table_magnitude = active_zone.spectral_profile or table_magnitude
+                if self._old_tables is not None and self._fade_frames > 0:
+                    old_zone = self._old_tables.zone_for_pitch(midi_pitch)
+                    old_profile = old_zone.spectral_profile or (0.0,) * 64
+                    fade = min(1.0, max(0.0, self._fade_position / self._fade_frames))
+                    table_magnitude = tuple(
+                        before * (1.0 - fade) + after * fade
+                        for before, after in zip(old_profile, table_magnitude)
+                    )
             return {
                 "tables_ready": self._active_tables is not None,
                 "tables_pending": self._pending_tables is not None or self._requested_state is not None,
@@ -553,6 +595,9 @@ class AuroraInstrument:
                 "generation_error": self._generation_error or "",
                 "note_frequency": self._last_note_frequency,
                 "voice_rms": self._last_voice_rms,
+                "voice_envelope_sum": envelope_sum,
+                "voice_lfo_level": lfo_level,
+                "table_magnitude": table_magnitude,
                 "spectrum_centroid_hz": centroid,
                 "spectrum_peak_hz": peak_frequency,
             }
@@ -584,11 +629,13 @@ class AuroraInstrument:
 
 
 def aurora_spec():
-    """Construct the shared-shell specification for offline and later UI use."""
+    """Construct the AURORA instrument and tabbed terminal view specification."""
     from pathlib import Path
 
     from trio_kit.shell import InstrumentSpec
+    from trio_aurora.ui import AuroraUI, SCREEN_NAMES
 
+    ui = AuroraUI()
     return InstrumentSpec(
         identifier="aurora",
         name="AURORA",
@@ -596,8 +643,21 @@ def aurora_spec():
         registry=aurora_registry(),
         factory_package="trio_aurora",
         factory_presets_dir=Path(__file__).resolve().parent / "data" / "presets",
+        factory_skins_dir=Path(__file__).resolve().parent / "data" / "skins",
         max_voices=8,
         extras_validator=validate_extras,
+        draw=ui.draw,
+        widgets=ui.widgets,
+        on_screen=ui.on_screen,
+        screen_names=SCREEN_NAMES,
+        header=ui.header,
+        footer=ui.footer,
+        piano_octaves=4,
+        piano_height=5,
+        compact_piano_height=3,
+        refresh_hz=12,
+        refresh_when=ui.refresh_when,
+        extras_changed=ui.extras_changed,
     )
 
 

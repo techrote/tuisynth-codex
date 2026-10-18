@@ -1,0 +1,61 @@
+schema = "md-editor-theme/1.1"
+id = "borealis"
+name = "BOREALIS"
+instrument = "aurora"
+fps = 24
+
+[palette]
+bg = "#03121a"
+fg = "#cfe9e4"
+muted = "#668c8c"
+teal = "#14a37f"
+mint = "#7cf5c4"
+violet = "#b388ff"
+gold = "#ffd166"
+coral = "#ff6b6b"
+ice = "#77d5e6"
+white = "#f3ffff"
+black = "#01070b"
+
+[styles]
+background = { fg = "fg", bg = "bg" }
+text = { fg = "fg", bg = "bg" }
+muted = { fg = "muted", bg = "bg" }
+border = { fg = "teal", bg = "bg" }
+title = { fg = "mint", bg = "bg", bold = true }
+heading = { fg = "ice", bg = "bg", bold = true }
+accent = { fg = "violet", bg = "bg", bold = true }
+status = { fg = "mint", bg = "bg" }
+warning = { fg = "gold", bg = "bg", bold = true }
+error = { fg = "coral", bg = "bg", bold = true }
+focused = { fg = "black", bg = "mint", bold = true }
+hover = { fg = "mint", bg = "#123c42" }
+pressed = { fg = "black", bg = "ice", bold = true }
+selected = { fg = "white", bg = "#245b63", bold = true }
+disabled = { fg = "muted", bg = "bg" }
+key_white = { fg = "fg", bg = "#e8f6f3" }
+key_black = { fg = "mint", bg = "#10262d" }
+key_pressed = { fg = "black", bg = "mint", bold = true }
+meter_low = { fg = "teal", bg = "bg" }
+meter_mid = { fg = "mint", bg = "bg" }
+meter_high = { fg = "violet", bg = "bg", bold = true }
+aurora_0 = { fg = "#0b3d3a", bg = "bg" }
+aurora_1 = { fg = "#14a37f", bg = "bg" }
+aurora_2 = { fg = "#7cf5c4", bg = "bg" }
+aurora_3 = { fg = "#77d5e6", bg = "bg" }
+aurora_4 = { fg = "#b388ff", bg = "bg", bold = true }
+
+[glyphs]
+density = [" ", ".", ":", "-", "=", "+", "*", "#", "%", "@"]
+idle = "."
+frame = "round"
+
+[ramps]
+aurora = ["#03121a", "#0b3d3a", "#14a37f", "#7cf5c4", "#b388ff"]
+
+[art]
+logo = "✶ A U R O R A ✶"
+sky = "·  ✧  ·  ✦  ·  ✧  ·"
+
+[fallbacks.ascii.glyphs]
+density = [" ", ".", ":", "+", "#"]

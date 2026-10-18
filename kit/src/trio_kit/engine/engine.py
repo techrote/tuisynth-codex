@@ -57,7 +57,7 @@ class EngineTelemetry:
         data: dict[str, object] = {}
         try:
             for index, (key, value) in enumerate(self.instrument.items()):
-                if index >= 16:
+                if index >= 64 or len(data) >= 16:
                     break
                 if not isinstance(key, str):
                     continue
@@ -65,6 +65,17 @@ class EngineTelemetry:
                     data[key[:64]] = value[:128] if isinstance(value, str) else value
                 elif isinstance(value, float) and math.isfinite(value):
                     data[key[:64]] = value
+                elif isinstance(value, (tuple, list)) and len(value) <= 64:
+                    # Bounded numeric vectors support compact instrument visualizers
+                    # without allowing arbitrary mutable or unbounded telemetry.
+                    if not all(isinstance(item, (int, float)) and not isinstance(item, bool) for item in value):
+                        continue
+                    try:
+                        vector = tuple(float(item) for item in value)
+                    except (OverflowError, ValueError):
+                        continue
+                    if all(math.isfinite(item) for item in vector):
+                        data[key[:64]] = vector
         except Exception:
             data.clear()
         object.__setattr__(self, "instrument", MappingProxyType(data))
