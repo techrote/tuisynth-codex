@@ -325,7 +325,7 @@ class CanvasApp:
             self.invalidate()
 
     def cancel_mouse_capture(self) -> None:
-        """End a held gesture before a modal takes input, preserving its release."""
+        """Cancel captured input without activating click controls or leaving notes held."""
         captured = self.router.capture
         if captured is None:
             return
@@ -337,11 +337,11 @@ class CanvasApp:
         # already hidden/replaced it. Merely clearing capture could leave a note,
         # bow or weather gust held indefinitely.
         if isinstance(captured.payload, Widget):
-            captured.payload.handle_mouse(release)
+            captured.payload.cancel_mouse_capture(release)
         else:
             owner = next((widget for widget in self.widgets.widgets if widget.tag == captured.tag), None)
             if owner is not None:
-                owner.handle_mouse(release)
+                owner.cancel_mouse_capture(release)
         self.invalidate()
 
     def invalidate(self, *, animated: bool | None = None) -> None:

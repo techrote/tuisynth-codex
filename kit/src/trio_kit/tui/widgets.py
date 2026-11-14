@@ -52,6 +52,14 @@ class Widget:
     def handle_mouse(self, event: MouseInput) -> bool:
         return False
 
+    def cancel_mouse_capture(self, release: MouseInput) -> bool:
+        """End an interrupted drag, normally forwarding release to sustained controls.
+
+        Click-action widgets must override this hook so forced cancellation
+        cannot be mistaken for a completed mouse click.
+        """
+        return self.handle_mouse(release)
+
     def activate(self) -> bool:
         return False
 
@@ -473,6 +481,13 @@ class Button(Widget):
             return False
         self.on_press()
         return True
+
+    def cancel_mouse_capture(self, release: MouseInput) -> bool:
+        """Disarm a cancelled press without invoking its click callback."""
+        del release
+        was_armed = self._armed
+        self._armed = False
+        return was_armed
 
     def handle_mouse(self, event: MouseInput) -> bool:
         if event.kind == "right":

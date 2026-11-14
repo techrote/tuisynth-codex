@@ -63,6 +63,38 @@ def test_button_drag_outside_does_not_activate_after_captured_release(tmp_path: 
         assert hits == ["run"]
 
 
+
+@pytest.mark.parametrize("ownership", ("visible", "hidden", "replaced"))
+def test_cancelling_button_capture_never_activates_and_rearms_normally(tmp_path: Path, ownership: str) -> None:
+    """A modal/screen transition is not a completed click, even for a stale hit."""
+    actions: list[str] = []
+    button = Button("action", Rect(2, 2, 8, 1), "Run", lambda: actions.append("run"))
+    ring = FocusRing((button,))
+    with HeadlessApp(size=(20, 7), widgets=ring, error_log=str(tmp_path / "errors.log")) as app:
+        app._send(app._sgr(0, 3, 2), events=1)
+        assert app.app.router.captured_tag == "action"
+        assert button._armed
+        if ownership == "hidden":
+            button.visible = False
+        elif ownership == "replaced":
+            ring.widgets.remove(button)
+        app.app.cancel_mouse_capture()
+        assert app.app.router.captured_tag is None
+        assert not button._armed
+        assert actions == []
+        # The terminal may still send the physical mouse-up after the overlay
+        # takes ownership; it must not complete the cancelled button press.
+        app.release(3, 2)
+        assert actions == []
+        if ownership == "replaced":
+            ring.add(button)
+        button.visible = True
+        app.app.invalidate()
+        app.screen_text()
+        app.click(3, 2)
+        assert actions == ["run"]
+
+
 def test_sgr_drag_capture_wheel_ctrl_and_right_reset_feed_fake_queue(tmp_path: Path) -> None:
     queue = FakeEventQueue()
     spec = ParamSpec("amp.level", "Level", "", 0, 100, 40)

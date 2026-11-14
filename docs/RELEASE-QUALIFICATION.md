@@ -5,6 +5,18 @@ This is the engineering handoff for the unpublished v0.1.0 candidate. The PR sta
 stays open. Merge, tagging and public publication require explicit owner approval.
 Physical acceptance is solely recorded in [ACCEPTANCE.md](ACCEPTANCE.md).
 
+## Follow-up independent review correction
+
+The 14 November independent review of commit `40584a81a42b86ea4cfd87e2277b16036c373bcb`
+identified one P3 shared-Button capture defect: synthetic in-bounds mouse-up
+could activate a button while a modal or screen transition cancelled its
+gesture. The widget cancellation hook now distinguishes deliberate cancellation
+from a normal click: a Button is disarmed without callback, while sustained
+gesture widgets retain their release. The real SGR regression covers visible,
+hidden and removed-from-focus-ring capture owners, subsequent terminal mouse-up,
+and a fresh valid click. The exact corrected commit/CI is recorded in PR #35.
+This change does not claim any additional hardware acceptance.
+
 ## Exact source and evidence
 
 The final PR handoff names the reviewed full commit SHA and links its four CI jobs.
@@ -34,7 +46,7 @@ DRIFT 55. No accepted tests were removed, skipped or weakened to admit the candi
 | Launch/install | `launch.sh`, `launch.cmd`, `tools/launch.py`, `tools/check_launchers.py` | Supported Python selection, owned local venv setup/reuse/repair, explicit optional audio/MIDI packages, source or wheel installation, safe failed setup/retry, argument/exit-code forwarding and actual extracted-candidate checks. |
 | Shared UI/input | `kit/src/trio_kit/shell.py`, `kit/src/trio_kit/tui/app.py`, `kit/src/trio_kit/tui/widgets.py`, `loom/src/trio_loom/ui.py`, `drift/src/trio_drift/ui.py` | Correct cancelled CC learn, selected-control identity, clickable/scrolled shared lists, modal focus, panic availability and release of captured gestures before modal/screen transitions. No synthesis algorithm or factory sound changes. |
 | Persistence repair | `kit/src/trio_kit/preset.py`, `kit/src/trio_kit/input/cc_learn.py` | MIDI maps no longer break preset discovery; reserved-path protection prevents map deletion or overwrite, while valid historical colliding presets remain recoverable through rename. |
-| New regressions/reference generation | `kit/tests/test_release.py`, `kit/tests/test_launchers.py`, `kit/tests/test_documentation.py`, `kit/tests/test_release_ui.py`, `kit/tests/test_release_presets.py`, `tools/documentation.py` | Real installer/wrapper commands and terminal key/SGR events; tamper, drift, error/recovery, selection and persistence regressions; generated documentation checks. |
+| New regressions/reference generation | `kit/tests/test_release.py`, `kit/tests/test_launchers.py`, `kit/tests/test_documentation.py`, `kit/tests/test_release_ui.py`, `kit/tests/test_release_presets.py`, `kit/tests/test_tui_app.py`, `tools/documentation.py` | Real installer/wrapper commands and terminal key/SGR events; tamper, drift, error/recovery, selection and persistence regressions; generated documentation checks. |
 | User/release guides | `README.md`, `aurora/README.md`, `loom/README.md`, `drift/README.md`, `CHANGELOG.md`, `docs/INSTALL.md`, `docs/CONTROLS.md`, `docs/CLI.md`, `docs/RELEASE.md`, `docs/RELEASE-NOTES-0.1.0.md`, `docs/ACCEPTANCE.md`, this document | Verified controls/assets/configuration, frozen existing layouts, 17-issue release history, practical installation/evaluation/rollback, with physical checks explicitly unperformed. |
 | Engineering/provenance | `docs/PROVENANCE.md`, `docs/programme/IMPLEMENTATION-PROGRAMME.md`, `docs/programme/prepasses/TRIO-017.md`, `docs/rag/02-AUDIO-ENGINE-CONTRACT.md`, `docs/rag/04-TUI-UX-CONTRACT.md`, `docs/rag/10-TESTING-CI-RELEASE.md` | Reconciled prior completion, current campaign authority, release contracts, discovered defect repairs and primary/assisting/review contributions. |
 
