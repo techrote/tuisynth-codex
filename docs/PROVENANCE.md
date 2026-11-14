@@ -7,6 +7,24 @@ The previously pending TRIO-016 repair/main verification is now reconciled: main
 [run 39115306829](https://github.com/techrote/tuisynth-codex/actions/runs/39115306829).
 The historical entries below retain what was known when they were written.
 
+The first TRIO-017 candidate CI run,
+[43545617750](https://github.com/techrote/tuisynth-codex/actions/runs/43545617750),
+passed the complete Ubuntu/Python 3.11 lane and exposed two cross-platform gaps:
+an oversized pytest parameter ID exceeded Windows' environment-variable limit,
+and upstream python-rtmidi 1.5.8 had no Python 3.14 binary wheel. The primary agent
+repaired the test identifier without reducing its corruption payload and added
+native CI prerequisites and separate Python 3.14 wheelhouse artifacts. The
+packaging agent implemented checksum-verified published-source acquisition,
+pinned Cython regeneration of the generated C++ only, a pinned Meson build,
+compiled-host-API checks and native provenance. The launcher agent repaired
+optional build isolation, explicit prepared-wheelhouse requirements and installed
+backend inspection; the documentation agent reconciled the owner procedures.
+Independent follow-up review identified missing retained compiler evidence and
+the need to constrain optional versions when reusing a wheelhouse. Both are
+included in the final qualification path. All final-source outcomes remain
+identified by exact SHA/run/artifact in the PR handoff; this first run is retained
+as debugging provenance, not presented as a four-lane pass.
+
 | Issue | Role | Tool/provider | Exact model/config | Contribution | Human intervention | Date |
 |---|---|---|---|---|---|---|
 | TRIO-017 | prepass, implementation, integration, debug, qualification, release-audit | ChatGPT/Codex primary agent; GitHub connector, Git, Python 3.12.14, pip, build, setuptools, wheel, pytest, GitHub Actions | GPT-6 Astra Pro; exact reasoning configuration not exposed | Revalidated live issue/main and the 551-test baseline; integrated offline packaging with the existing check entry point, preserved/expanded all four CI lanes, added exact-source artifact upload without publication, pinned transitive dependencies and reconciled programme/RAG/provenance. Repaired MIDI-learn cancellation, modal keyboard/pointer ownership, visible overlay selection/scrolling, and selected-parameter CC learning for ordinary controls, LOOM groups and DRIFT drawers. Added real-key/SGR regressions and repaired independent-review findings through final-source qualification. Exact source/run/artifact results are recorded in the PR handoff and generated qualification records. | Owner supplied the full TRIO-017 finishing mission and explicit Draft/HOLD override; no implementation code or physical acceptance evidence supplied | 2026-11-14 |

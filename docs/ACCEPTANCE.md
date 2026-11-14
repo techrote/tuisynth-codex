@@ -16,12 +16,23 @@ Obtain the candidate ZIP and manifest from the exact CI run linked in the PR. Ve
 
 ## Single-paste Windows 11 evaluation
 
-Open **Windows Terminal with PowerShell**, change into the extracted candidate root containing `launch.cmd`, and paste this block. It installs explicit audio/MIDI dependencies, performs device-free selftests/renders, prints available devices/ports and opens the three instruments in sequence. Each interactive run continues until Ctrl+Q; the script checks command failures. Package setup requires internet access unless you set `TRIO_WHEELHOUSE` to a complete local wheelhouse first.
+Install **64-bit Python 3.11 with the Python Launcher**, open **Windows Terminal with PowerShell**, change into the extracted candidate root containing `launch.cmd`, and paste this block. By default it selects `py -3.11` for the upstream prebuilt MIDI wheel. An explicitly set `TRIO_PYTHON` is respected; Python 3.13+ additionally requires `TRIO_WHEELHOUSE` pointing to a complete wheelhouse prepared using that same interpreter and the [native prerequisites](INSTALL.md#python-314-midi-wheelhouse).
+
+The block installs explicit audio/MIDI dependencies, performs device-free selftests/renders, prints available devices/ports and opens the three instruments in sequence. Each interactive run continues until Ctrl+Q; every native command checks its exit code. Setup requires internet access unless a complete matching wheelhouse has been supplied. It does not silently fall back from a requested Python 3.14 interpreter to another version. For Python 3.14, the matching Windows wheelhouse artifact from the qualified CI run can be extracted and used directly; local native build tools are only needed when preparing a new wheelhouse.
 
 ```powershell
 $ErrorActionPreference = 'Stop'
 if (-not (Test-Path .\launch.cmd)) { throw 'Change into the extracted TRIO candidate folder first.' }
 $launch = (Resolve-Path .\launch.cmd).Path
+if (-not $env:TRIO_PYTHON) {
+    if (-not (Get-Command py -ErrorAction SilentlyContinue)) { throw 'Install 64-bit Python 3.11 with the Python Launcher, or set TRIO_PYTHON explicitly.' }
+    $selected = & py -3.11 -I -c "import struct, sys; assert struct.calcsize('P') == 8; print(sys.executable)"
+    if ($LASTEXITCODE -ne 0 -or -not $selected) { throw '64-bit Python 3.11 was not found.' }
+    $env:TRIO_PYTHON = $selected.Trim()
+}
+& $env:TRIO_PYTHON -I -c "import os, struct, sys; assert struct.calcsize('P') == 8 and sys.version_info >= (3,11), '64-bit Python 3.11+ required'; assert sys.version_info < (3,13) or os.environ.get('TRIO_WHEELHOUSE'), 'Python 3.13+ MIDI needs a matching prepared TRIO_WHEELHOUSE'"
+if ($LASTEXITCODE -ne 0) { throw 'Python/MIDI setup prerequisites are incomplete.' }
+$env:TRIO_VENV = Join-Path $PWD '.trio-venv'
 $evaluation = Join-Path $PWD ('owner-evaluation-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 New-Item -ItemType Directory -Path $evaluation | Out-Null
 function Invoke-Trio {

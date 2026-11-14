@@ -272,3 +272,174 @@ def test_output_refuses_overwrite_and_unignored_checkout_directory(tmp_path: Pat
     with pytest.raises(RELEASE.ReleaseError, match="must be empty"):
         RELEASE.validate_output_location(repository, existing)
     assert (existing / "keep.txt").read_text() == "owner data"
+
+
+def test_native_midi_wheel_selection_distinguishes_python_abi_and_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    from packaging.tags import Tag
+    import packaging.tags
+    monkeypatch.setattr(packaging.tags, "sys_tags", lambda: iter([Tag("cp314", "cp314", "win_amd64")]))
+    release = {"info": {"version": "1.5.8"}, "urls": [
+        {"packagetype": "bdist_wheel", "filename": "python_rtmidi-1.5.8-cp312-cp312-win_amd64.whl"},
+        {"packagetype": "bdist_wheel", "filename": "python_rtmidi-1.5.8-cp314-cp314-manylinux_2_28_x86_64.whl"},
+    ]}
+    assert RELEASE.compatible_rtmidi_wheels(release) == []
+    release["urls"].append({"packagetype": "bdist_wheel", "filename": "python_rtmidi-1.5.8-cp314-cp314-win_amd64.whl"})
+    assert RELEASE.compatible_rtmidi_wheels(release) == ["python_rtmidi-1.5.8-cp314-cp314-win_amd64.whl"]
+    release["urls"][-1]["yanked"] = True
+    assert RELEASE.compatible_rtmidi_wheels(release) == []
+
+
+def test_native_midi_rejects_unexpected_upstream_release() -> None:
+    with pytest.raises(RELEASE.ReleaseError, match="unexpected python-rtmidi"):
+        RELEASE.compatible_rtmidi_wheels({"info": {"version": "1.6.0"}, "urls": []})
+
+
+def test_native_midi_source_integrity_is_checked_before_extraction(tmp_path: Path) -> None:
+    archive = tmp_path / "untrusted.tar.gz"
+    archive.write_bytes(b"not the pinned upstream source")
+    with pytest.raises(RELEASE.ReleaseError, match="source SHA-256"):
+        RELEASE.extract_rtmidi_source(archive, tmp_path / "unpacked")
+    assert not (tmp_path / "unpacked").exists()
+
+
+@pytest.mark.parametrize("unsafe", ["../outside", "/absolute", "other-package/file", "python_rtmidi-1.5.8/../../escape"])
+def test_native_midi_source_extraction_rejects_unsafe_members(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unsafe: str) -> None:
+    import tarfile
+    archive = tmp_path / "source.tar.gz"
+    with tarfile.open(archive, "w:gz") as output:
+        entry = tarfile.TarInfo(unsafe)
+        entry.size = 1
+        output.addfile(entry, io.BytesIO(b"x"))
+    monkeypatch.setattr(RELEASE, "RTMIDI_SOURCE_SHA256", RELEASE.digest(archive))
+    with pytest.raises(RELEASE.ReleaseError, match="unsafe python-rtmidi"):
+        RELEASE.extract_rtmidi_source(archive, tmp_path / "extract")
+
+
+def test_network_failure_never_becomes_a_silent_native_build_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import urllib.error
+    called = []
+    monkeypatch.setattr(RELEASE, "run", lambda *args, **kwargs: "")
+    def fail(*args, **kwargs):
+        raise urllib.error.URLError("network unavailable")
+    monkeypatch.setattr(RELEASE.urllib.request, "urlopen", fail)
+    monkeypatch.setattr(RELEASE, "build_rtmidi_wheel", lambda *args: called.append("native build"))
+    with pytest.raises(urllib.error.URLError, match="network unavailable"):
+        RELEASE.prepare_wheelhouse(tmp_path / "wheels", ROOT, extras=("midi",))
+    assert called == []
+    assert not (tmp_path / "wheels" / "RTMIDI-PROVENANCE.json").exists()
+
+
+def test_optional_native_build_toolchain_is_fully_pinned() -> None:
+    from packaging.requirements import Requirement
+    requirements = [Requirement(line) for line in (ROOT / "requirements-midi-build.txt").read_text().splitlines() if line and not line.startswith("#")]
+    assert {r.name for r in requirements} == {"Cython", "meson-python", "meson", "ninja", "pyproject-metadata"}
+    assert all(len(r.specifier) == 1 and next(iter(r.specifier)).operator == "==" for r in requirements)
+
+
+def test_wheelhouse_tag_detection_bootstraps_with_only_pip(tmp_path: Path) -> None:
+    import sys
+    script = """
+import importlib.abc, importlib.util, pathlib, sys
+class NoStandalonePackaging(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == 'packaging' or fullname.startswith('packaging.'):
+            raise ModuleNotFoundError('No standalone packaging installed', name=fullname)
+sys.meta_path.insert(0, NoStandalonePackaging())
+spec=importlib.util.spec_from_file_location('release', sys.argv[1])
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+assert module.compatible_rtmidi_wheels({'info': {'version': '1.5.8'}, 'urls': []}) == []
+assert 'packaging' not in sys.modules
+assert 'pip._vendor.packaging.tags' in sys.modules
+print('stock Python+pip bootstrap passed')
+"""
+    result = subprocess.run([sys.executable, "-I", "-c", script, str(ROOT / "tools" / "release.py")], cwd=tmp_path, capture_output=True, text=True, timeout=30, check=True)
+    assert 'bootstrap passed' in result.stdout
+
+
+def test_optional_constraints_prevent_newer_stale_midi_wheel_resolution(tmp_path: Path) -> None:
+    import sys
+    wheelhouse = tmp_path / "wheels"
+    wheelhouse.mkdir()
+    for version in ("1.5.8", "1.6.0"):
+        prefix = f"python_rtmidi-{version}.dist-info/"
+        payload = {
+            prefix + "METADATA": f"Metadata-Version: 2.4\nName: python-rtmidi\nVersion: {version}\nRequires-Python: >=3.11\n".encode(),
+            prefix + "WHEEL": b"Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+        }
+        record = io.StringIO(newline="")
+        writer = csv.writer(record)
+        for name, data in payload.items():
+            sha = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode().rstrip("=")
+            writer.writerow([name, "sha256=" + sha, len(data)])
+        writer.writerow([prefix + "RECORD", "", ""])
+        payload[prefix + "RECORD"] = record.getvalue().encode()
+        with zipfile.ZipFile(wheelhouse / f"python_rtmidi-{version}-py3-none-any.whl", "w") as wheel:
+            for name, data in payload.items():
+                wheel.writestr(name, data)
+    report = tmp_path / "resolution.json"
+    result = subprocess.run([sys.executable, "-I", "-m", "pip", "install", "--dry-run", "--ignore-installed", "--no-deps",
+                             "--no-index", "--find-links", str(wheelhouse), "--constraint", str(ROOT / "requirements-optional.txt"),
+                             "--report", str(report), "python-rtmidi>=1.5,<2"],
+                            cwd=tmp_path, env=RELEASE.clean_environment(wheelhouse), capture_output=True, text=True, timeout=30, check=True)
+    resolution = json.loads(report.read_text())["install"]
+    assert len(resolution) == 1
+    assert resolution[0]["metadata"]["version"] == "1.5.8", result.stdout
+    assert resolution[0]["download_info"]["url"].endswith("python_rtmidi-1.5.8-py3-none-any.whl")
+
+
+def test_optional_constraint_versions_match_the_qualified_acquisition() -> None:
+    from packaging.requirements import Requirement
+    constraints = [Requirement(line) for line in (ROOT / "requirements-optional.txt").read_text().splitlines() if line and not line.startswith("#")]
+    assert {r.name for r in constraints} == {"sounddevice", "mido", "python-rtmidi", "cffi", "pycparser"}
+    assert all(len(r.specifier) == 1 and next(iter(r.specifier)).operator == "==" for r in constraints)
+    assert next(str(r.specifier) for r in constraints if r.name == "python-rtmidi") == "==" + RELEASE.RTMIDI_VERSION
+
+
+@pytest.mark.parametrize("mode", ["upstream binary wheel", "built from pinned published sdist"])
+def test_midi_provenance_rejects_competing_same_version_wheel_and_tampering(tmp_path: Path, mode: str) -> None:
+    wheel = tmp_path / "python_rtmidi-1.5.8-cp314-cp314-linux_x86_64.whl"
+    wheel.write_bytes(b"qualified wheel")
+    provenance = {"mode": mode, "version": "1.5.8"}
+    if mode == "upstream binary wheel":
+        provenance["downloaded_wheels_sha256"] = {wheel.name: RELEASE.digest(wheel)}
+    else:
+        provenance.update(wheel=wheel.name, wheel_sha256=RELEASE.digest(wheel))
+    record = tmp_path / "RTMIDI-PROVENANCE.json"
+    record.write_bytes(RELEASE.json_bytes(provenance))
+    assert RELEASE.validate_rtmidi_provenance(tmp_path) == provenance
+    competing = tmp_path / "python_rtmidi-1.5.8-cp314-cp314-manylinux_2_28_x86_64.whl"
+    competing.write_bytes(b"pip may prefer this different build")
+    with pytest.raises(RELEASE.ReleaseError, match="exactly its one recorded"):
+        RELEASE.validate_rtmidi_provenance(tmp_path)
+    assert competing.read_bytes() == b"pip may prefer this different build"
+    competing.unlink()
+    wheel.write_bytes(b"changed after acquisition")
+    with pytest.raises(RELEASE.ReleaseError, match="SHA-256 does not match"):
+        RELEASE.validate_rtmidi_provenance(tmp_path)
+
+
+def test_candidate_rejects_tampered_midi_provenance_before_build(tmp_path: Path) -> None:
+    wheels = tmp_path / "wheels"
+    wheels.mkdir()
+    wheel = wheels / "python_rtmidi-1.5.8-cp314-cp314-win_amd64.whl"
+    wheel.write_bytes(b"original")
+    (wheels / "RTMIDI-PROVENANCE.json").write_bytes(RELEASE.json_bytes({
+        "mode": "built from pinned published sdist", "version": "1.5.8",
+        "wheel": wheel.name, "wheel_sha256": RELEASE.digest(wheel),
+    }))
+    wheel.write_bytes(b"tampered")
+    with pytest.raises(RELEASE.ReleaseError, match="SHA-256 does not match"):
+        RELEASE.create_candidate(ROOT, "HEAD", tmp_path / "candidate", wheelhouse=wheels)
+    assert not (tmp_path / "candidate").exists()
+
+
+def test_midi_cache_requires_provenance_and_preserves_newer_version_cache(tmp_path: Path) -> None:
+    newer = tmp_path / "python_rtmidi-1.6.0-py3-none-any.whl"
+    newer.write_bytes(b"constrained out of resolution")
+    assert RELEASE.validate_rtmidi_provenance(tmp_path) is None
+    pinned = tmp_path / "python_rtmidi-1.5.8-py3-none-any.whl"
+    pinned.write_bytes(b"no provenance")
+    with pytest.raises(RELEASE.ReleaseError, match="lacks provenance"):
+        RELEASE.validate_rtmidi_provenance(tmp_path)
+    assert newer.read_bytes() == b"constrained out of resolution"

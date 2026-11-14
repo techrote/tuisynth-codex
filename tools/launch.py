@@ -125,11 +125,26 @@ def parse_extras(value: str) -> tuple[str, ...]:
     return extras
 
 
+def midi_build_guidance(extras: Sequence[str]) -> str:
+    return (
+        "Prepare a complete matching wheelhouse with the same Python interpreter: "
+        f"python tools/release.py --prepare-wheelhouse wheelhouse --extras {','.join(extras)}; "
+        "then rerun this launcher with --wheelhouse wheelhouse. "
+        "The controlled preparation refreshes python-rtmidi 1.5.8's generated Cython C++ for newer Python. "
+        "Native prerequisites: on Windows install Visual Studio Build Tools with Desktop development with C++ "
+        "and use Developer PowerShell; on Ubuntu install build-essential, python3-dev, libasound2-dev and pkg-config. "
+        "See docs/INSTALL.md."
+    )
+
+
 def package_inputs(root: Path) -> tuple[str, list[Path], list[Path]]:
     """Release wheels take precedence; never mix incomplete wheels and source."""
     requirement = root / "requirements-release.txt"
     if not requirement.is_file():
         raise LaunchError(f"Missing {requirement.name}; use a complete TRIO checkout or evaluation bundle.")
+    optional_constraints = root / "requirements-optional.txt"
+    if not optional_constraints.is_file():
+        raise LaunchError(f"Missing {optional_constraints.name}; use a complete TRIO checkout or evaluation bundle.")
     if (root / "wheels").exists():
         paths = []
         for package in PACKAGES:
@@ -137,9 +152,9 @@ def package_inputs(root: Path) -> tuple[str, list[Path], list[Path]]:
             if len(matches) != 1:
                 raise LaunchError(f"Expected exactly one trio-{package} {VERSION} wheel in {root / 'wheels'}.")
             paths.append(matches[0])
-        return "wheels", paths, [requirement, *paths]
+        return "wheels", paths, [requirement, optional_constraints, *paths]
     paths = [root / package for package in PACKAGES]
-    files = [requirement]
+    files = [requirement, optional_constraints]
     for path in paths:
         if not (path / "pyproject.toml").is_file() or not (path / "src").is_dir():
             raise LaunchError(f"Missing source package {path.name}; use a complete TRIO checkout or evaluation bundle.")
@@ -238,6 +253,13 @@ def prepare(root: Path, environment: Path, *, extras: str | None, wheelhouse: Pa
         environment.mkdir(parents=True, exist_ok=True)
         write_json(environment / OWNER, {"owner": "TRIO", "schema": SCHEMA, "extras": list(chosen)})
         (environment / READY).unlink(missing_ok=True)
+        if wheelhouse is None and "midi" in chosen and sys.version_info[:2] >= (3, 13):
+            raise LaunchError(
+                "Python 3.13+ MIDI setup requires a compatible prebuilt wheelhouse; plain online "
+                "python-rtmidi 1.5.8 source installation is not the qualified path. "
+                f"{midi_build_guidance(chosen)} No instrument was launched. "
+                "The selected interpreter and extras have been retained."
+            )
         print(f"TRIO: setting up {mode} installation in {environment}; extras: {','.join(chosen) or 'none'}", file=sys.stderr, flush=True)
         try:
             # A relocatable interpreter reached through a PATH symlink can give
@@ -260,17 +282,36 @@ def prepare(root: Path, environment: Path, *, extras: str | None, wheelhouse: Pa
             subprocess_environment.pop("PIP_INDEX_URL", None)
             subprocess_environment.pop("PIP_EXTRA_INDEX_URL", None)
         constraints = str(root / "requirements-release.txt")
+        optional_constraints = str(root / "requirements-optional.txt")
         run_setup(
             [python, "-m", "pip", "install", *offline, "-r", constraints],
             environment=subprocess_environment, cwd=root,
         )
         package_arguments = [str(path) for path in packages]
-        if chosen:
-            package_arguments[0] += "[" + ",".join(chosen) + "]"
         run_setup(
             [python, "-m", "pip", "install", *offline, "--no-build-isolation", "--force-reinstall", "-c", constraints, *package_arguments],
             environment=subprocess_environment, cwd=root,
         )
+        if chosen:
+            # Only our four distributions use the pinned in-venv build tools.
+            # Native optional dependencies may need a different PEP 517 backend
+            # (for example Meson/Cython for RtMidi on newer Python releases).
+            # Keep their build isolation enabled; the already-installed local
+            # kit supplies the extras metadata without a PyPI TRIO dependency.
+            optional_requirement = f"trio-kit[{','.join(chosen)}]=={VERSION}"
+            try:
+                run_setup(
+                    [python, "-m", "pip", "install", *offline, "-c", constraints, "-c", optional_constraints, optional_requirement],
+                    environment=subprocess_environment, cwd=root,
+                )
+            except LaunchError as error:
+                native_hint = " " + midi_build_guidance(chosen) if "midi" in chosen else ""
+                raise LaunchError(
+                    f"Requested optional dependencies ({','.join(chosen)}) remain incomplete. {error}"
+                    f"{native_hint} Alternatively, supply a compatible prebuilt wheelhouse for this OS, "
+                    "architecture and Python version with --wheelhouse, then retry. "
+                    "The selected interpreter and extras have been retained."
+                ) from error
         run_setup([python, "-m", "pip", "check"], environment=subprocess_environment, cwd=root)
         state = installed_state(environment)
         if not state or not all(command_path(environment, name).is_file() for name in COMMANDS):

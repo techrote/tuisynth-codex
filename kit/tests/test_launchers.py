@@ -19,6 +19,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tarfile
 import zipfile
 
 import pytest
@@ -35,11 +36,11 @@ SMOKE = importlib.util.module_from_spec(SMOKE_SPEC)
 SMOKE_SPEC.loader.exec_module(SMOKE)
 
 
-def make_wheel(directory: Path, name: str, *, version: str = "0.1.0", command: str | None = None, dependencies: str = "") -> Path:
+def make_wheel(directory: Path, name: str, *, version: str = "0.1.0", command: str | None = None, dependencies: str = "", module_code: str | None = None) -> Path:
     normalized = name.replace("-", "_")
     metadata = f"{normalized}-{version}.dist-info"
     contents = {
-        f"{normalized}/__init__.py": f"__version__ = {version!r}\n",
+        f"{normalized}/__init__.py": module_code if module_code is not None else f"__version__ = {version!r}\n",
         f"{metadata}/METADATA": f"Metadata-Version: 2.3\nName: {name}\nVersion: {version}\n{dependencies}\n",
         f"{metadata}/WHEEL": "Wheel-Version: 1.0\nGenerator: TRIO launcher test fixture\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
     }
@@ -72,6 +73,7 @@ def fixture_bundle(tmp_path: Path) -> Path:
     for filename in ("launch.sh", "launch.cmd", "tools/launch.py"):
         shutil.copy2(ROOT / filename, root / filename)
     (root / "requirements-release.txt").write_text("# Fixture wheels have no mandatory third-party dependencies.\n", encoding="utf-8")
+    (root / "requirements-optional.txt").write_text("# Ordinary fixture extras use only local fixture distributions.\n", encoding="utf-8")
     for name, command in (("kit", "trio-demo"), ("aurora", "aurora"), ("loom", "loom"), ("drift", "drift")):
         dependencies = (
             'Provides-Extra: audio\nRequires-Dist: trio-audio-fixture==1.0; extra == "audio"\n'
@@ -220,6 +222,99 @@ def test_failed_optional_setup_is_unready_recoverable_and_choice_persists(tmp_pa
     assert_ok(invoke(root, "drift", "--version"))
 
 
+def test_source_only_optional_dependency_uses_isolated_build_backend(tmp_path: Path) -> None:
+    root = fixture_bundle(tmp_path)
+    # This backend wheel is available only to pip's isolated build environment.
+    # The old global --no-build-isolation install fails to import it.
+    backend = '''import base64, csv, hashlib, io, pathlib, zipfile
+def get_requires_for_build_wheel(config_settings=None):
+    return []
+def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
+    wheel_name = "trio_audio_fixture-1.0-py3-none-any.whl"
+    dist = "trio_audio_fixture-1.0.dist-info"
+    contents = {
+        "trio_audio_fixture/__init__.py": b"BUILD_ISOLATION_WORKED = True\\n",
+        dist + "/METADATA": b"Metadata-Version: 2.3\\nName: trio-audio-fixture\\nVersion: 1.0\\n",
+        dist + "/WHEEL": b"Wheel-Version: 1.0\\nRoot-Is-Purelib: true\\nTag: py3-none-any\\n",
+    }
+    record = io.StringIO(newline="")
+    writer = csv.writer(record)
+    for name, data in contents.items():
+        digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode("ascii")
+        writer.writerow((name, "sha256=" + digest, len(data)))
+    writer.writerow((dist + "/RECORD", "", ""))
+    contents[dist + "/RECORD"] = record.getvalue().encode("utf-8")
+    with zipfile.ZipFile(pathlib.Path(wheel_directory) / wheel_name, "w") as archive:
+        for name, data in contents.items():
+            archive.writestr(name, data)
+    return wheel_name
+'''
+    make_wheel(root / "wheels", "trio-build-helper-fixture", version="1.0", module_code=backend)
+    pyproject = b'[build-system]\nrequires = ["trio-build-helper-fixture==1.0"]\nbuild-backend = "trio_build_helper_fixture"\n'
+    source = root / "wheels" / "trio_audio_fixture-1.0.tar.gz"
+    with tarfile.open(source, "w:gz") as archive:
+        info = tarfile.TarInfo("trio_audio_fixture-1.0/pyproject.toml")
+        info.size = len(pyproject)
+        archive.addfile(info, io.BytesIO(pyproject))
+    result = invoke(root, "--extras", "audio", "--setup-only", "aurora")
+    assert_ok(result)
+    marker = LAUNCH.read_json(root / ".trio-venv" / LAUNCH.READY)
+    assert marker["installed"]["versions"]["trio-audio-fixture"] == "1.0"
+    assert "trio-build-helper-fixture" not in marker["installed"]["versions"]
+    assert marker["extras"] == ["audio"]
+    repeated = invoke(root, "aurora", "--version")
+    assert_ok(repeated)
+    assert "reusing" in repeated.stderr
+
+
+def test_missing_requested_midi_backend_gives_actionable_safe_failure(tmp_path: Path) -> None:
+    root = fixture_bundle(tmp_path)
+    result = invoke(root, "--extras", "midi", "aurora", "--version")
+    assert result.returncode != 0
+    assert "no instrument was launched" in result.stderr
+    assert "Visual Studio Build Tools" in result.stderr and "libasound2-dev" in result.stderr
+    assert "compatible prebuilt wheelhouse" in result.stderr
+    assert not (root / ".trio-venv" / LAUNCH.READY).exists()
+    assert LAUNCH.read_json(root / ".trio-venv" / LAUNCH.OWNER)["extras"] == ["midi"]
+    make_wheel(root / "wheels", "trio-midi-fixture", version="1.0")
+    assert_ok(invoke(root, "aurora", "--version"))
+    assert LAUNCH.read_json(root / ".trio-venv" / LAUNCH.READY)["extras"] == ["midi"]
+
+
+def test_online_midi_preflight_preserves_selection_and_requires_controlled_wheelhouse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = fixture_bundle(tmp_path)
+    environment = root / ".trio-venv"
+    # Exercise the newer-interpreter policy without running a native build or
+    # contacting a network; CI also runs the real suite under Python 3.14.
+    monkeypatch.setattr(LAUNCH.sys, "version_info", (3, 14, 0))
+    with pytest.raises(LAUNCH.LaunchError, match=r"Python 3.13\+ MIDI setup requires") as failure:
+        LAUNCH.prepare(root, environment, extras="audio,midi", wheelhouse=None, reinstall=False)
+    assert "--prepare-wheelhouse wheelhouse --extras audio,midi" in str(failure.value)
+    assert "No instrument was launched" in str(failure.value)
+    assert LAUNCH.read_json(environment / LAUNCH.OWNER)["extras"] == ["audio", "midi"]
+    assert not (environment / LAUNCH.READY).exists()
+    assert not LAUNCH.venv_python(environment).exists()
+
+
+def test_newer_optional_wheel_cannot_override_qualified_constraint(tmp_path: Path) -> None:
+    root = fixture_bundle(tmp_path)
+    shutil.copy2(ROOT / "requirements-optional.txt", root / "requirements-optional.txt")
+    make_wheel(
+        root / "wheels", "trio-kit", command="trio-demo",
+        dependencies='Provides-Extra: audio\nRequires-Dist: sounddevice>=0.5,<1; extra == "audio"\n',
+    )
+    # Public extras intentionally allow a range. A stale/newer wheelhouse must
+    # still install the exact version named by release qualification.
+    make_wheel(root / "wheels", "sounddevice", version="0.5.7")
+    failed = invoke(root, "--extras", "audio", "--setup-only", "aurora")
+    assert failed.returncode != 0
+    assert not (root / ".trio-venv" / LAUNCH.READY).exists()
+    make_wheel(root / "wheels", "sounddevice", version="0.5.6")
+    assert_ok(invoke(root, "aurora", "--version"))
+    marker = LAUNCH.read_json(root / ".trio-venv" / LAUNCH.READY)
+    assert marker["installed"]["versions"]["sounddevice"] == "0.5.6"
+
+
 def test_unmanaged_existing_environment_is_preserved(tmp_path: Path) -> None:
     root = fixture_bundle(tmp_path)
     existing = root / ".trio-venv"
@@ -246,6 +341,7 @@ def test_incomplete_wheel_bundle_and_invalid_extras_fail_before_venv(tmp_path: P
 def test_source_fingerprint_detects_changes_ignores_build_cache(tmp_path: Path) -> None:
     root = tmp_path
     (root / "requirements-release.txt").write_text("numpy==2.4.3\n", encoding="utf-8")
+    shutil.copy2(ROOT / "requirements-optional.txt", root / "requirements-optional.txt")
     for name in LAUNCH.PACKAGES:
         path = root / name
         (path / "src" / f"trio_{name}").mkdir(parents=True)
@@ -258,6 +354,11 @@ def test_source_fingerprint_detects_changes_ignores_build_cache(tmp_path: Path) 
     cache.mkdir()
     (cache / "__init__.cpython-311.pyc").write_bytes(b"not source")
     assert LAUNCH.fingerprint(root, LAUNCH.package_inputs(root)[2], ()) == original
+    optional = root / "requirements-optional.txt"
+    pinned = optional.read_text(encoding="utf-8")
+    optional.write_text(pinned.replace("sounddevice==0.5.6", "sounddevice==0.5.7"), encoding="utf-8")
+    assert LAUNCH.fingerprint(root, LAUNCH.package_inputs(root)[2], ()) != original
+    optional.write_text(pinned, encoding="utf-8")
     (root / "kit" / "src" / "trio_kit" / "__init__.py").write_text("changed = True\n", encoding="utf-8")
     assert LAUNCH.fingerprint(root, LAUNCH.package_inputs(root)[2], ()) != original
     assert LAUNCH.fingerprint(root, files, ("audio",)) != original
@@ -296,6 +397,45 @@ def test_clean_subprocess_environment_rejects_python_and_pip_install_redirection
     assert environment["PIP_CONFIG_FILE"] == os.devnull
 
 
+@pytest.mark.parametrize("include_host_api", [False, True], ids=["dummy-only-rejected", "host-api-without-opening-ports"])
+def test_installed_midi_probe_requires_host_api_without_constructing_ports(tmp_path: Path, include_host_api: bool) -> None:
+    root = tmp_path / "probe bundle"
+    root.mkdir()
+    shutil.copy2(ROOT / "requirements-optional.txt", root / "requirements-optional.txt")
+    environment = root / ".trio-venv"
+    base_python = str(Path(getattr(sys, "_base_executable", sys.executable)).resolve())
+    subprocess.run([base_python, "-I", "-m", "venv", "--without-pip", str(environment)], check=True, timeout=60)
+    python = LAUNCH.venv_python(environment)
+    location = subprocess.run([str(python), "-I", "-c", "import sysconfig; print(sysconfig.get_path('purelib'))"], capture_output=True, text=True, check=True, timeout=30)
+    site = Path(location.stdout.strip())
+    site.mkdir(parents=True, exist_ok=True)
+    host = 2 if sys.platform.startswith("linux") else 4 if sys.platform == "win32" else 1
+    (site / "rtmidi.py").write_text(
+        "API_LINUX_ALSA=2\nAPI_WINDOWS_MM=4\nAPI_MACOSX_CORE=1\nAPI_RTMIDI_DUMMY=6\n"
+        f"def get_compiled_api(): return {[6, host] if include_host_api else [6]!r}\n"
+        "def get_api_name(api): return str(api)\n"
+        "def MidiIn(*args, **kwargs): raise AssertionError('must not construct a MIDI port')\n"
+        "def MidiOut(*args, **kwargs): raise AssertionError('must not construct a MIDI port')\n",
+        encoding="utf-8",
+    )
+    (site / "mido.py").write_text("def open_input(*args, **kwargs): raise AssertionError('must not open a MIDI port')\n", encoding="utf-8")
+    for name, version in (("mido", "1.3.3"), ("python-rtmidi", "1.5.8")):
+        metadata = site / (name.replace("-", "_") + f"-{version}.dist-info")
+        metadata.mkdir()
+        (metadata / "METADATA").write_text(f"Metadata-Version: 2.3\nName: {name}\nVersion: {version}\n", encoding="utf-8")
+    if not include_host_api:
+        with pytest.raises(RuntimeError, match="expected host MIDI API"):
+            SMOKE.probe_optional_backends(root, "midi")
+    else:
+        result = SMOKE.probe_optional_backends(root, "midi")
+        assert result["rtmidi"]["host_api"] == "pass"
+        assert result["ports_opened"] is False and result["streams_opened"] is False
+        metadata = site / "mido-1.3.3.dist-info" / "METADATA"
+        metadata.write_text(metadata.read_text(encoding="utf-8").replace("Version: 1.3.3", "Version: 1.3.4"), encoding="utf-8")
+        with pytest.raises(RuntimeError, match="unqualified optional dependency version"):
+            SMOKE.probe_optional_backends(root, "midi")
+
+
 def test_shell_syntax_when_posix_shell_available() -> None:
     if os.name != "nt":
         subprocess.run(["sh", "-n", str(ROOT / "launch.sh")], check=True, timeout=10)
@@ -303,7 +443,7 @@ def test_shell_syntax_when_posix_shell_available() -> None:
 
 def test_exact_candidate_archive_source_wheel_and_manifest_validation(tmp_path: Path) -> None:
     root = fixture_bundle(tmp_path)
-    source_names = ("launch.sh", "launch.cmd", "tools/launch.py", "requirements-release.txt")
+    source_names = ("launch.sh", "launch.cmd", "tools/launch.py", "requirements-release.txt", "requirements-optional.txt")
     hashes = {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in source_names}
     wheels = {
         f"trio-{name}": {"wheel": f"trio_{name}-0.1.0-py3-none-any.whl", "sha256": hashlib.sha256((root / "wheels" / f"trio_{name}-0.1.0-py3-none-any.whl").read_bytes()).hexdigest()}

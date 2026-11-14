@@ -2,7 +2,7 @@
 
 ## Requirements and supported qualification
 
-Use a 64-bit Python installation, version 3.11 or newer, with `venv` and `pip`. The qualification matrix is Ubuntu/Windows on Python 3.11/3.14. Other Python/platform combinations are not claimed by that matrix. Use Windows Terminal or a terminal with Unicode, colour and SGR mouse support; 100×30 cells is the full layout, 80×24 the compact layout. Below 80×24 the app asks you to enlarge it. No standalone Python executable is bundled.
+Use a 64-bit Python installation, version 3.11 or newer, with `venv` and `pip`. **Python 3.11 is recommended for Windows owner evaluation with online audio/MIDI installation.** The qualification matrix is Ubuntu/Windows on Python 3.11/3.14; the Python 3.14 MIDI lane prepares a native dependency wheel before offline installation. Other Python/platform combinations are not claimed by that matrix. Use Windows Terminal or a terminal with Unicode, colour and SGR mouse support; 100×30 cells is the full layout, 80×24 the compact layout. Below 80×24 the app asks you to enlarge it. No standalone Python executable is bundled.
 
 The four distributions are `trio-kit`, `trio-aurora`, `trio-loom` and `trio-drift`, all version 0.1.0. Their console commands are `trio-demo`, `aurora`, `loom` and `drift`; instrument imports remain separate. Core dependencies include NumPy, SciPy, prompt-toolkit and wcwidth. Optional `audio` installs sounddevice; optional `midi` installs mido and python-rtmidi. Installing those packages does not establish that an audio device or MIDI port is available.
 
@@ -36,9 +36,12 @@ launch.cmd [--extras audio,midi] [--wheelhouse DIR] [--setup-only] [--reinstall]
 | `TRIO_VENV` | Choose an alternate managed environment directory. |
 | `TRIO_WHEELHOUSE` | Supply the offline wheelhouse without repeating the option. |
 
-For example, these commands install hardware support once, verify available ports, then open AURORA:
+For online Windows hardware-support installation, first select 64-bit Python 3.11. These commands prepare the environment, list available ports and open AURORA:
 
 ```powershell
+$selected = & py -3.11 -I -c "import struct, sys; assert struct.calcsize('P') == 8; print(sys.executable)"
+if ($LASTEXITCODE -ne 0 -or -not $selected) { throw 'Install 64-bit Python 3.11 with the Python Launcher.' }
+$env:TRIO_PYTHON = $selected.Trim()
 .\launch.cmd --extras audio,midi --setup-only aurora
 .\launch.cmd aurora --list-devices
 .\launch.cmd aurora --list-midi
@@ -48,7 +51,7 @@ For example, these commands install hardware support once, verify available port
 Omitting `--extras` later preserves the existing selection. To remove optional backends, use a new `TRIO_VENV`; the launcher does not silently uninstall them. Paths and forwarded arguments may contain spaces:
 
 ```powershell
-$env:TRIO_PYTHON = 'C:\Program Files\Python314\python.exe' # Use your actual Python path.
+$env:TRIO_PYTHON = 'C:\Program Files\Python311\python.exe' # Use your actual 64-bit Python path.
 $env:TRIO_VENV = Join-Path $env:LOCALAPPDATA 'TRIO evaluation\venv'
 .\launch.cmd drift --data-dir "$env:LOCALAPPDATA\TRIO evaluation\data" --no-audio
 ```
@@ -76,16 +79,41 @@ The bare wheel install is core/device-free. Add explicit kit extras with the loc
 
 ## Offline setup and pinned qualification dependencies
 
-First obtain dependencies on an internet-connected machine with the same OS, architecture and Python version as the target. For a source checkout, a qualification wheelhouse can be populated with:
+Prepare dependencies on an internet-connected machine using the **same interpreter, OS and architecture** as the target. Run the release helper from the repository/candidate root; it downloads the pinned core/build dependencies and explicitly requested extras. For Windows with the interpreter selected above:
 
 ```powershell
-python -m pip download --only-binary=:all: --dest wheelhouse -r requirements-dev.txt
-# Optional; only if actual hardware operation is wanted:
-python -m pip download --only-binary=:all: --dest wheelhouse "sounddevice>=0.5,<1" "mido>=1.3,<2" "python-rtmidi>=1.5,<2"
+& $env:TRIO_PYTHON tools/release.py --prepare-wheelhouse wheelhouse --extras audio,midi
+if ($LASTEXITCODE -ne 0) { throw 'Wheelhouse preparation failed; read the native prerequisite diagnostic.' }
 .\launch.cmd --wheelhouse .\wheelhouse --extras audio,midi aurora
+if ($LASTEXITCODE -ne 0) { throw 'TRIO setup or launch failed.' }
 ```
 
-On POSIX use the same Python commands followed by `sh ./launch.sh`. Build tools for source installation must be present in the wheelhouse as well as runtime dependencies. Native dependency wheels are platform/interpreter specific; a Windows/Python 3.11 wheelhouse is not a universal Linux/Python 3.14 cache. A missing or incompatible wheel fails setup with pip's diagnostic; provide it and retry. A release bundle carries the four TRIO wheels but does not implicitly contain all third-party binaries. See [release reproduction](RELEASE.md) for the recorded dependency/toolchain hashes.
+On POSIX, use the intended Python executable for the same helper invocation, then `sh ./launch.sh --wheelhouse ./wheelhouse --extras audio,midi aurora`. Omit `--extras` for a core-only wheelhouse, or select just `audio`/`midi`. The helper handles the native MIDI build where upstream wheels are absent; a blanket `pip download --only-binary` command cannot prepare Python 3.14 MIDI dependencies.
+
+The completed wheelhouse is the offline installer input; later build/install qualification uses no package index. Native dependency wheels are platform/interpreter specific: a Windows/Python 3.11 wheelhouse is not a Linux/Python 3.14 cache. A release candidate includes the four TRIO wheels, but not a universal third-party dependency bundle. See [release reproduction](RELEASE.md) for source/build/dependency provenance.
+
+## Python 3.14 MIDI wheelhouse
+
+The final Python 3.14 CI jobs provide separate `trio-wheelhouse-<OS>-py3.14-<SHA>`
+artifacts. For owner evaluation, download the Windows artifact from the same
+qualified run as the candidate, extract it, and set `TRIO_WHEELHOUSE` to that
+directory's absolute path. This uses the compiled backend already exercised by
+CI and requires no local C++ compiler. Keep its `WHEELHOUSE.json`, native build
+provenance and compiler log together with the wheels. The local build instructions
+below are for preparing a new wheelhouse yourself.
+
+[python-rtmidi 1.5.8's upstream files](https://pypi.org/project/python-rtmidi/1.5.8/#files) provide CPython binary wheels through 3.12. For Python 3.13+ with `midi` selected, a first launcher setup without a wheelhouse stops with instructions; it does not claim that a plain online source install is compatible. Core and audio-only online setup remain available. Once a matching wheelhouse installation completes successfully, ordinary repeat launches reuse it without repeating the wheelhouse option.
+
+The release helper builds the native MIDI wheel during **dependency acquisition**, using a checksum-verified upstream source distribution, pinned Cython regeneration from the unchanged `.pyx`, and a pinned Meson toolchain. It preserves the upstream `.pyx`/MIDI source and the chosen interpreter; only the generated C++ is refreshed for current Python compatibility. Build versions are pinned in `requirements-midi-build.txt`. The source build uses ALSA on Linux with JACK disabled, and WinMM on Windows; the upstream prebuilt Linux wheel can expose a different backend set. Install the host build prerequisites before running the helper:
+
+| Host | Native prerequisites for controlled MIDI-wheel preparation |
+|---|---|
+| Ubuntu | `build-essential`, `pkg-config`, `libasound2-dev`, and development headers for the selected Python. Use the headers matching the actual interpreter. |
+| Windows | Installed MSVC C++ build tools and a Windows SDK. The helper selects the Visual Studio build environment through Meson `--vsenv`; Developer PowerShell is also suitable. |
+
+For Ubuntu, install the listed packages through your system package manager before acquisition. On Windows, install the C++/SDK components in Visual Studio Build Tools before acquisition; they are unnecessary for the Python 3.11 prebuilt-wheel evaluation path. Upstream explains the [native compiler, Python-header and MIDI-library requirements](https://spotlightkid.github.io/python-rtmidi/installation.html).
+
+To deliberately evaluate Python 3.14 on Windows, set `TRIO_PYTHON` to its actual 64-bit executable, run that executable's `tools/release.py --prepare-wheelhouse wheelhouse --extras audio,midi`, then set `TRIO_WHEELHOUSE` to the completed wheelhouse's absolute path before running the [owner evaluation block](ACCEPTANCE.md). Retain `RTMIDI-PROVENANCE.json` and, for a source build, `RTMIDI-BUILD.log` alongside the dependency wheels. They identify the source hash, generated C++ transformation, build versions/settings, output wheel hash and device-free API check; the release embeds the provenance in `SOURCE.json`. A missing compiler, header or wheel is a setup failure to repair, not an inferred hardware pass.
 
 ## Audio and MIDI
 
@@ -121,7 +149,8 @@ There is no generic `config.ini`, automatic current-preset save or automatic res
 | Setup is already running | Let the other installer finish; do not launch competing setup processes into the same environment. |
 | Environment was moved or its interpreter changed | Use a fresh `TRIO_VENV` path or remove only the disposable `.trio-venv`, then relaunch. Python venvs are not portable installations. |
 | Application has no sound | Check status, remove `--no-audio`, install `--extras audio`, inspect `--list-devices`, and choose the intended output. |
-| MIDI list is empty or unavailable | Install `--extras midi`, connect the controller, check the OS detects it, then inspect F7/`--list-midi`. |
+| Python 3.13+ MIDI setup requests a wheelhouse | Prepare it using that same Python and the native prerequisites above; alternatively select 64-bit Python 3.11 for upstream prebuilt wheels. Do not change interpreters silently. |
+| MIDI list is empty or unavailable | Ensure optional MIDI setup completed, connect the controller, check the OS detects it, then inspect F7/`--list-midi`. |
 | Notes do not stop on ordinary computer-key release | Terminal input uses a timed gate (450 ms without repeat), not physical key-up events. Check apostrophe latch; F9 is panic. |
 | Computer letter keys change controls instead of notes | A focused sequencer/matrix consumes its command letters. Escape clears focus or returns to the prior area. |
 | Mouse or modified function keys fail | Test in Windows Terminal/another SGR terminal; confirm terminal shortcuts are not intercepting the keys. Use Ctrl+P for palette actions and keyboard twins. |

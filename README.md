@@ -13,7 +13,7 @@ Three co-installable instruments share an audio engine and terminal toolkit, wit
 
 ## Start here
 
-Install **64-bit Python 3.11 or newer**. Software qualification covers Python **3.11 and 3.14 on Ubuntu and Windows**. Use a mouse-capable terminal; Windows Terminal is the Windows evaluation target. A 100-column × 30-row window shows the full layout; 80×24 shows compact controls. Smaller windows ask you to enlarge the terminal.
+For the easiest Windows audio/MIDI evaluation, install **64-bit Python 3.11** with the Python Launcher. The software matrix covers Python **3.11 and 3.14 on Ubuntu and Windows**; Python 3.14 MIDI setup additionally needs the prepared native wheelhouse described in [installation](docs/INSTALL.md#python-314-midi-wheelhouse). Core/device-free operation requires Python 3.11 or newer. Use a mouse-capable terminal; Windows Terminal is the Windows evaluation target. A 100-column × 30-row window shows the full layout; 80×24 shows compact controls. Smaller windows ask you to enlarge the terminal.
 
 From an extracted candidate bundle or repository checkout:
 
@@ -27,16 +27,19 @@ From an extracted candidate bundle or repository checkout:
 sh ./launch.sh aurora --no-audio
 ```
 
-The launcher installs all four TRIO distributions once, then reuses its local `.trio-venv`. To enable actual audio and MIDI backends explicitly:
+The launcher installs all four TRIO distributions once, then reuses its local `.trio-venv`. For online audio/MIDI setup on Windows, select the installed Python 3.11 interpreter explicitly before enabling the optional backends:
 
 ```powershell
+$selected = & py -3.11 -I -c "import struct, sys; assert struct.calcsize('P') == 8; print(sys.executable)"
+if ($LASTEXITCODE -ne 0 -or -not $selected) { throw 'Install 64-bit Python 3.11 with the Python Launcher.' }
+$env:TRIO_PYTHON = $selected.Trim()
 .\launch.cmd --extras audio,midi aurora
 # After quitting AURORA with Ctrl+Q:
 .\launch.cmd loom
 .\launch.cmd drift
 ```
 
-On POSIX use `sh ./launch.sh` with the same arguments. First setup needs package access unless a complete `--wheelhouse` has been supplied. `--no-audio` disables audio device output; ordinary interactive startup may still probe optional MIDI ports. The selftest, offline render and snapshot commands never open devices.
+On POSIX use `sh ./launch.sh` with the same arguments and choose a compatible interpreter through `TRIO_PYTHON`. First setup needs package access unless a complete `--wheelhouse` has been supplied. The [upstream python-rtmidi 1.5.8 files](https://pypi.org/project/python-rtmidi/1.5.8/#files) include CPython wheels through 3.12; Python 3.13+ MIDI setup requires the controlled wheelhouse preparation step. Audio-only or core setup does not require that MIDI build. `--no-audio` disables audio device output; ordinary interactive startup may still probe optional MIDI ports. The selftest, offline render and snapshot commands never open devices.
 
 Read [installation, launch and troubleshooting](docs/INSTALL.md) for Python selection, offline setup, repeat launch, data locations, optional dependencies and recovery. The [CLI reference](docs/CLI.md) lists the actual supported arguments.
 

@@ -32,6 +32,14 @@ acquisition is an explicit network-enabled setup step:
 Builds, package checks and launcher qualification then use that wheelhouse offline.
 The optional backends are installed for software checks without opening devices;
 their physical behavior still requires `docs/ACCEPTANCE.md`.
+`requirements-optional.txt` constrains the optional dependency versions without
+adding them to core installs. If the pinned MIDI backend has no matching binary,
+acquisition verifies the published source hash and uses the pinned
+`requirements-midi-build.txt` toolchain to regenerate its generated C++ and build
+a wheel. Authored upstream source remains unchanged. Native logs/provenance and
+the installed host API are checked; native compiler output is not claimed
+reproducible across hosts. Python 3.14 CI retains its complete matching wheelhouse
+as a separate artifact for compiler-free offline owner setup.
 
 `python tools/check.py --package all --packaging --wheelhouse .trio-ci/wheelhouse`
 preserves the developer entry point and uses the release tool's full payload,

@@ -40,7 +40,13 @@ def test_saved_midi_map_does_not_break_preset_save_list_load_or_reopen(tmp_path:
         reopened.shutdown()
 
 
-@pytest.mark.parametrize("contents", (b"{not JSON", b"\xff\xfe", b'{"schema":"trio-midi-map/1","bindings":[]}', b"x" * 65537))
+@pytest.mark.parametrize(
+    "contents",
+    (b"{not JSON", b"\xff\xfe", b'{"schema":"trio-midi-map/1","bindings":[]}', b"x" * 65537),
+    # Pytest exposes node IDs through PYTEST_CURRENT_TEST. Keep the oversized
+    # payload out of that Windows environment variable without reducing it.
+    ids=("invalid-json", "invalid-utf8", "invalid-bindings", "oversized-map"),
+)
 def test_corrupt_midi_map_is_not_misclassified_as_a_preset(tmp_path: Path, contents: bytes) -> None:
     shell = _shell(tmp_path)
     try:

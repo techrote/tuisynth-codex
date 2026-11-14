@@ -51,10 +51,17 @@ jobs:
           cache-dependency-path: |
             requirements-dev.txt
             requirements-release.txt
+            requirements-midi-build.txt
+            requirements-optional.txt
       - name: Install pinned development dependencies
         run: python -m pip install -r requirements-dev.txt
       - name: Install all distributions in editable mode
         run: python -m pip install --no-deps --no-build-isolation --editable kit --editable aurora --editable loom --editable drift
+      - name: Install audio runtime and native MIDI prerequisites on Ubuntu
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends build-essential pkg-config libasound2-dev libportaudio2
       - name: Acquire wheels for offline qualification
         run: python tools/release.py --prepare-wheelhouse .trio-ci/wheelhouse --extras audio,midi
       - name: Run package checks
@@ -78,4 +85,13 @@ jobs:
           name: trio-launchers-${{ matrix.os }}-py${{ matrix.python-version }}-${{ steps.source.outputs.sha }}
           path: .trio-ci/launcher-qualification.json
           if-no-files-found: error
+          retention-days: 30
+      - name: Upload matching Python 3.14 offline dependencies
+        if: matrix.python-version == '3.14'
+        uses: actions/upload-artifact@v4
+        with:
+          name: trio-wheelhouse-${{ matrix.os }}-py${{ matrix.python-version }}-${{ steps.source.outputs.sha }}
+          path: .trio-ci/wheelhouse/
+          if-no-files-found: error
+          compression-level: 0
           retention-days: 30

@@ -57,7 +57,7 @@ def run_launcher(root: Path, wheelhouse: Path, arguments: list[str]) -> subproce
 
 def copy_inputs(root: Path, destination: Path, *, wheels: Path | None) -> None:
     (destination / "tools").mkdir(parents=True)
-    for path in ("launch.sh", "launch.cmd", "tools/launch.py", "requirements-release.txt", "README.md"):
+    for path in ("launch.sh", "launch.cmd", "tools/launch.py", "requirements-release.txt", "requirements-optional.txt", "README.md"):
         shutil.copy2(root / path, destination / path)
     if wheels is not None:
         (destination / "wheels").mkdir()
@@ -141,7 +141,7 @@ def extract_candidate(candidate: Path, destination: Path, wheels: Path, expected
     if expected_commit is not None and record.get("commit") != expected_commit:
         raise RuntimeError("Candidate SOURCE.json commit does not match the checked-out qualification revision")
     hashes = record.get("source_files_sha256", {})
-    for name in ("launch.sh", "launch.cmd", "tools/launch.py", "requirements-release.txt"):
+    for name in ("launch.sh", "launch.cmd", "tools/launch.py", "requirements-release.txt", "requirements-optional.txt"):
         if name not in hashes:
             raise RuntimeError(f"Candidate source record does not identify {name}")
     for name, expected in hashes.items():
@@ -172,6 +172,76 @@ def extract_candidate(candidate: Path, destination: Path, wheels: Path, expected
         if entries.get(candidate.name) != archive_hash:
             raise RuntimeError("Candidate archive SHA256SUMS mismatch")
     return {"archive": candidate.name, "sha256": archive_hash, "commit": record.get("commit"), "source_and_wheel_hashes": "pass"}
+
+
+def probe_optional_backends(root: Path, extras: str) -> dict:
+    """Load installed native modules and inspect compiled APIs without ports."""
+    environment = root / ".trio-venv"
+    python = environment / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    qualified_versions = {}
+    for line in (root / "requirements-optional.txt").read_text(encoding="utf-8").splitlines():
+        value = line.split("#", 1)[0].strip()
+        if not value:
+            continue
+        name, separator, version = value.partition("==")
+        if not separator or not name.strip() or not version.strip():
+            raise RuntimeError("Optional qualification constraints must contain exact package versions")
+        qualified_versions[name.strip()] = version.strip()
+    script = r'''
+import importlib, importlib.metadata, json, pathlib, sys
+selected = set(json.loads(sys.argv[1]))
+qualified = json.loads(sys.argv[2])
+prefix = pathlib.Path(sys.prefix).resolve()
+report = {"ports_opened": False, "streams_opened": False, "physical_acceptance": "not exercised"}
+report["qualified_dependency_versions"] = {}
+for name, expected_version in qualified.items():
+    try:
+        actual_version = importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        continue
+    assert actual_version == expected_version, ("unqualified optional dependency version", name, actual_version, expected_version)
+    report["qualified_dependency_versions"][name] = actual_version
+def inspect_module(module_name, distribution):
+    module = importlib.import_module(module_name)
+    location = pathlib.Path(module.__file__).resolve()
+    assert location.is_relative_to(prefix), (module_name, "loaded outside the installation", str(location))
+    version = importlib.metadata.version(distribution)
+    assert version == qualified[distribution], ("unqualified optional dependency version", distribution, version)
+    return module, {"version": version, "module_path": str(location), "import": "pass"}
+if "midi" in selected:
+    mido, mido_record = inspect_module("mido", "mido")
+    rtmidi, midi_record = inspect_module("rtmidi", "python-rtmidi")
+    expected = "API_LINUX_ALSA" if sys.platform.startswith("linux") else "API_WINDOWS_MM" if sys.platform == "win32" else "API_MACOSX_CORE" if sys.platform == "darwin" else None
+    assert expected is not None, ("unqualified MIDI platform", sys.platform)
+    compiled = list(rtmidi.get_compiled_api())
+    assert getattr(rtmidi, expected) in compiled, ("expected host MIDI API", expected, "compiled", compiled)
+    midi_record.update({"compiled_apis": compiled, "api_names": [rtmidi.get_api_name(api) for api in compiled], "required_host_api": expected, "host_api": "pass"})
+    if hasattr(rtmidi, "_rtmidi"):
+        extension = pathlib.Path(rtmidi._rtmidi.__file__).resolve()
+        assert extension.is_relative_to(prefix), ("native MIDI extension loaded outside the installation", str(extension))
+        midi_record["native_extension_path"] = str(extension)
+    report["mido"], report["rtmidi"] = mido_record, midi_record
+if "audio" in selected:
+    sounddevice, audio_record = inspect_module("sounddevice", "sounddevice")
+    audio_record["portaudio_version"] = list(sounddevice.get_portaudio_version())
+    report["sounddevice"] = audio_record
+print(json.dumps(report, sort_keys=True))
+'''
+    process_environment = os.environ.copy()
+    process_environment.pop("PYTHONPATH", None)
+    process_environment.pop("PYTHONHOME", None)
+    result = subprocess.run(
+        [str(python), "-I", "-c", script, json.dumps(extras.split(",")), json.dumps(qualified_versions)],
+        cwd=root.parent, env=process_environment, capture_output=True, text=True,
+        encoding="utf-8", errors="replace", check=False, timeout=30,
+    )
+    if result.returncode:
+        raise RuntimeError(
+            "Installed optional backend load/compiled-API check failed. "
+            "Linux audio requires the PortAudio runtime (Ubuntu: libportaudio2); MIDI requires the host backend.\n"
+            + result.stdout + "\n" + result.stderr
+        )
+    return json.loads(result.stdout)
 
 
 def check_mode(root: Path, wheelhouse: Path, *, mode: str, extras: str) -> dict:
@@ -209,6 +279,7 @@ def check_mode(root: Path, wheelhouse: Path, *, mode: str, extras: str) -> dict:
             raise RuntimeError(f"{mode}: forwarded render path/arguments produced unexpected WAV")
     if marker_path.read_bytes() != marker_bytes or marker_path.stat().st_mtime_ns != marker_time:
         raise RuntimeError(f"{mode}: unchanged launches unnecessarily changed the installation")
+    backend_report = {"status": "not requested", "ports_opened": False, "streams_opened": False}
     if extras:
         run_launcher(root, wheelhouse, ["--extras", extras, "--setup-only", "aurora"])
         optional = json.loads(marker_path.read_text(encoding="utf-8"))
@@ -216,6 +287,7 @@ def check_mode(root: Path, wheelhouse: Path, *, mode: str, extras: str) -> dict:
         expected_packages = ({"sounddevice"} if "audio" in selected else set()) | ({"mido", "python-rtmidi"} if "midi" in selected else set())
         if not expected_packages <= optional["installed"]["versions"].keys():
             raise RuntimeError(f"{mode}: selected optional packages were not installed")
+        backend_report = probe_optional_backends(root, extras)
         repeated = run_launcher(root, wheelhouse, ["drift", "--version"])
         if "reusing" not in repeated.stderr:
             raise RuntimeError(f"{mode}: repeated optional installation was not reused")
@@ -229,6 +301,7 @@ def check_mode(root: Path, wheelhouse: Path, *, mode: str, extras: str) -> dict:
         "input_sha256": input_hashes,
         "wheel_sha256": {name.removeprefix("wheels/"): value for name, value in input_hashes.items() if name.startswith("wheels/")},
         "optional_extras": extras or "not requested", "physical_audio_midi": "not exercised",
+        "optional_backend_load": backend_report,
         "installed_versions": installed,
     }
 

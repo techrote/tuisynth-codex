@@ -29,7 +29,7 @@ DRIFT 55. No accepted tests were removed, skipped or weakened to admit the candi
 
 | Area | Files | Result |
 |---|---|---|
-| Platform/dependency qualification | `.github/workflows/ci.yml`, `.gitattributes`, `.gitignore`, `requirements-dev.txt`, `requirements-release.txt` | Exact PR-head checkout; all four original OS/Python lanes retained and expanded; pinned build/runtime/transitive requirements; explicit dependency acquisition followed by offline qualification; candidate/evidence uploads with read-only repository permissions. |
+| Platform/dependency qualification | `.github/workflows/ci.yml`, `.gitattributes`, `.gitignore`, `requirements-dev.txt`, `requirements-release.txt`, `requirements-midi-build.txt`, `requirements-optional.txt` | Exact PR-head checkout; all four original OS/Python lanes retained and expanded; pinned build/runtime/transitive/native-build requirements and optional constraints; explicit dependency acquisition followed by offline qualification; candidate/evidence uploads with read-only repository permissions. |
 | Packaging/release | `tools/release.py`, `tools/check.py` | Clean exact-Git source exports, independent wheel builds, source/data/metadata/entry-point/RECORD verification, isolated installation, all four selftests, snapshots/renders, deterministic source/candidate ZIPs, SHA-256 and source/qualification/reproducibility records. |
 | Launch/install | `launch.sh`, `launch.cmd`, `tools/launch.py`, `tools/check_launchers.py` | Supported Python selection, owned local venv setup/reuse/repair, explicit optional audio/MIDI packages, source or wheel installation, safe failed setup/retry, argument/exit-code forwarding and actual extracted-candidate checks. |
 | Shared UI/input | `kit/src/trio_kit/shell.py`, `kit/src/trio_kit/tui/app.py`, `kit/src/trio_kit/tui/widgets.py`, `loom/src/trio_loom/ui.py`, `drift/src/trio_drift/ui.py` | Correct cancelled CC learn, selected-control identity, clickable/scrolled shared lists, modal focus, panic availability and release of captured gestures before modal/screen transitions. No synthesis algorithm or factory sound changes. |
@@ -48,6 +48,11 @@ Every Ubuntu/Windows × Python 3.11/3.14 lane performs these gates:
 
 1. Install pinned development dependencies and the four editable packages.
 2. Acquire the matching runtime/build and optional backend wheels explicitly.
+   When the pinned RtMidi release has no compatible upstream wheel, verify its
+   published source hash and regenerate its generated C++ with pinned Cython,
+   then build a wheel with pinned Meson tooling and the host compiler. Preserve
+   the authored upstream sources and record the compiler log, source hashes,
+   changed generated file, resulting wheel and device-free API probe.
 3. Run all established and new package regressions, including generated references.
 4. Export the exact committed source twice and build all four wheels in fresh
    pinned environments. Compare bytes and verify complete package contents.
@@ -58,8 +63,12 @@ Every Ubuntu/Windows × Python 3.11/3.14 lane performs these gates:
 6. Exercise genuine source and exact extracted-candidate launchers: first setup,
    all four installed selftests, reuse, argument forwarding, optional backend
    installation and subsequent reuse. The candidate ZIP's actual wrapper bytes are
-   exercised, including Windows line-ending handling.
+   exercised, including Windows line-ending handling. Load the optional modules
+   and verify the compiled MIDI host API without opening streams or ports.
 7. Verify final SHA-256 manifests and upload review artifacts/evidence.
+   Python 3.14 additionally uploads its complete matching dependency wheelhouse
+   so owner installation can use the qualified native MIDI wheel without a
+   local compiler.
 
 The local developer entry point remains:
 
@@ -107,6 +116,16 @@ The audit repaired concrete reproduced defects before handoff:
   `TRIO_PYTHON` tests; fallback aliases also exposed a venv interpreter-path defect.
 - Draft documentation misstated DRIFT user-save behavior, some context-dependent
   shortcuts, the actual user preset directory and checksum verification scope.
+- Initial CI exposed the absence of Python 3.14 binaries for the published
+  python-rtmidi release. Controlled acquisition now regenerates its obsolete
+  generated C++ and builds a real ALSA/WinMM backend; first-run instructions and
+  safe launcher failures require a matching prepared wheelhouse for that path.
+- An oversized corruption-test parameter was also used as its pytest node ID,
+  exceeding Windows' environment-variable limit before the test ran. Short
+  explicit IDs preserve the entire 65,537-byte test payload and all assertions.
+- Optional constraints prevent a stale wheelhouse's newer backend from replacing
+  the exact version whose native provenance was recorded. Base installations
+  still omit every optional backend.
 
 Focused reproducers precede or accompany these repairs. The final handoff names
 the exact reviewed source and final full CI results; preliminary mutable-worktree
@@ -123,6 +142,11 @@ device-free selftests/renders before practical audio/MIDI/interaction checks.
 The remaining physical checks are real output/listening, USB MIDI, actual Windows
 Terminal gestures and ten continuous minutes of stability/CPU observation per
 instrument. Core fallback and fake-device tests do not satisfy those checks.
+Python 3.11 supports straightforward online MIDI setup with the published backend
+wheel. Python 3.13+ MIDI setup uses a matching prepared wheelhouse; the qualified
+Python 3.14 CI artifacts include one for each operating system. Building that
+wheelhouse locally needs the documented native prerequisites. Native dependency
+compiler output is recorded and hashed, not claimed reproducible across hosts.
 The normal timed computer-keyboard gate, explicit preset saving, advanced settings
 stored in preset data and lack of standalone/PyPI distribution remain documented
 v0.1 scope, not unreported defects. No licence is added without owner choice.

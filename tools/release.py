@@ -21,6 +21,8 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
+import urllib.request
 import tempfile
 import time
 import tomllib
@@ -99,7 +101,160 @@ def require_wheelhouse(path: Path | None) -> Path:
     return path.resolve()
 
 
+RTMIDI_VERSION = "1.5.8"
+RTMIDI_SOURCE_URL = "https://files.pythonhosted.org/packages/dd/ee/0f91965dcc471714c69df21e5ca3d94dc81411b7dee2d31ff1184bea07c9/python_rtmidi-1.5.8.tar.gz"
+RTMIDI_SOURCE_SHA256 = "7f9ade68b068ae09000ecb562ae9521da3a234361ad5449e83fc734544d004fa"
+
+
+def _wheel_tag_helpers():
+    try:
+        from packaging.tags import sys_tags
+        from packaging.utils import parse_wheel_filename
+    except ModuleNotFoundError as error:
+        if error.name != "packaging" and not str(error.name).startswith("packaging."):
+            raise
+        # Acquisition must work in stock Python+pip before any project dependency
+        # is installed. pip already needs and ships this compatible-tag parser.
+        from pip._vendor.packaging.tags import sys_tags
+        from pip._vendor.packaging.utils import parse_wheel_filename
+    return sys_tags, parse_wheel_filename
+
+
+def compatible_rtmidi_wheels(release: dict[str, object]) -> list[str]:
+    """Use successful, pinned PyPI metadata to distinguish missing wheels from outages."""
+    sys_tags, parse_wheel_filename = _wheel_tag_helpers()
+    supported = set(sys_tags())
+    if release.get("info", {}).get("version") != RTMIDI_VERSION:
+        raise ReleaseError("unexpected python-rtmidi release metadata")
+    compatible = []
+    for artifact in release.get("urls", []):
+        if artifact.get("packagetype") == "bdist_wheel" and not artifact.get("yanked", False):
+            name, version, _, tags = parse_wheel_filename(artifact["filename"])
+            if str(name) == "python-rtmidi" and str(version) == RTMIDI_VERSION and tags & supported:
+                compatible.append(artifact["filename"])
+    return compatible
+
+
+def validate_rtmidi_provenance(wheelhouse: Path, *, provenance: dict[str, object] | None = None) -> dict[str, object] | None:
+    """Reject cache ambiguity: pip must have exactly the recorded pinned MIDI wheel."""
+    _, parse_wheel_filename = _wheel_tag_helpers()
+    candidates: dict[str, Path] = {}
+    for path in wheelhouse.glob("*.whl"):
+        try:
+            name, version, _, _ = parse_wheel_filename(path.name)
+        except ValueError:
+            continue  # pip also ignores invalid wheel filenames.
+        if str(name) == "python-rtmidi" and str(version) == RTMIDI_VERSION:
+            candidates[path.name] = path
+    if provenance is None:
+        record = wheelhouse / "RTMIDI-PROVENANCE.json"
+        if not record.is_file():
+            if candidates:
+                raise ReleaseError("MIDI wheelhouse lacks provenance; prepare a fresh wheelhouse with --extras midi")
+            return None
+        provenance = json.loads(record.read_text(encoding="utf-8"))
+    if not isinstance(provenance, dict) or provenance.get("version") != RTMIDI_VERSION:
+        raise ReleaseError("MIDI provenance has an unexpected version or schema")
+    if provenance.get("mode") == "upstream binary wheel":
+        expected = provenance.get("downloaded_wheels_sha256")
+    elif provenance.get("mode") == "built from pinned published sdist":
+        expected = {provenance.get("wheel"): provenance.get("wheel_sha256")}
+    else:
+        raise ReleaseError("MIDI provenance has an unrecognized acquisition mode")
+    if not isinstance(expected, dict) or len(expected) != 1 or set(candidates) != set(expected):
+        raise ReleaseError("MIDI wheelhouse must contain exactly its one recorded python-rtmidi 1.5.8 wheel; use a fresh directory instead of competing same-version wheel files")
+    for filename, sha in expected.items():
+        path = candidates[filename]
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{64}", sha) or path.is_symlink() or digest(path) != sha:
+            raise ReleaseError("MIDI wheel SHA-256 does not match its provenance")
+    return provenance
+
+
+def extract_rtmidi_source(archive: Path, destination: Path) -> Path:
+    if digest(archive) != RTMIDI_SOURCE_SHA256:
+        raise ReleaseError("python-rtmidi source SHA-256 does not match the pinned PyPI release")
+    root = "python_rtmidi-" + RTMIDI_VERSION
+    with tarfile.open(archive) as source:
+        for member in source.getmembers():
+            name = PurePosixPath(member.name)
+            if name.is_absolute() or ".." in name.parts or "\\" in member.name or not name.parts or name.parts[0] != root or not (member.isfile() or member.isdir()):
+                raise ReleaseError("unsafe python-rtmidi source archive entry")
+            target = destination.joinpath(*name.parts)
+            if member.isdir():
+                target.mkdir(parents=True, exist_ok=True)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                data = source.extractfile(member)
+                if data is None:
+                    raise ReleaseError("unreadable python-rtmidi source archive entry")
+                target.write_bytes(data.read())
+    return destination / root
+
+
+def build_rtmidi_wheel(destination: Path, source: Path, acquisition_environment: dict[str, str]) -> dict[str, object]:
+    """Build the published sdist with current pinned Cython; do not edit its authored source."""
+    run([sys.executable, "-m", "pip", "download", "--only-binary=:all:", "--dest", destination,
+         "-r", source / "requirements-release.txt", "-r", source / "requirements-midi-build.txt"],
+        cwd=source, environment=acquisition_environment)
+    with tempfile.TemporaryDirectory(prefix="trio-rtmidi-build-") as temporary:
+        workspace = Path(temporary)
+        archive = workspace / "python_rtmidi-1.5.8.tar.gz"
+        print("==> Download pinned python-rtmidi source for a native wheel build", flush=True)
+        with urllib.request.urlopen(RTMIDI_SOURCE_URL, timeout=45) as response:
+            archive.write_bytes(response.read())
+        project = extract_rtmidi_source(archive, workspace)
+        before = {path.relative_to(project).as_posix(): digest(path) for path in project.rglob("*") if path.is_file()}
+        build_environment = workspace / "venv"
+        venv.EnvBuilder(with_pip=True).create(build_environment)
+        python = python_in(build_environment)
+        environment = clean_environment(destination)
+        environment["PATH"] = str(python.parent) + os.pathsep + environment.get("PATH", "")
+        run([python, "-m", "pip", "install", "--no-index", "--find-links", destination,
+             "-r", source / "requirements-release.txt", "-r", source / "requirements-midi-build.txt"],
+            cwd=workspace, environment=environment)
+        generated = project / "src" / "_rtmidi.cpp"
+        # Upstream's Meson file prefers the shipped generated C++ over .pyx. Its
+        # 2023 Cython output predates Python 3.14: regenerate, do not patch .pyx.
+        run([python, "-m", "cython", "-3", "--cplus", "-o", generated, project / "src" / "_rtmidi.pyx"], cwd=project, environment=environment)
+        after = {path.relative_to(project).as_posix(): digest(path) for path in project.rglob("*") if path.is_file()}
+        changed = sorted(name for name in set(before) | set(after) if before.get(name) != after.get(name))
+        if changed != ["src/_rtmidi.cpp"]:
+            raise ReleaseError(f"unexpected changes while regenerating native MIDI source: {changed}")
+        wheels = workspace / "wheels"
+        wheels.mkdir()
+        settings = ["--config-setting=setup-args=--vsenv"] if os.name == "nt" else ["--config-setting=setup-args=-Djack=false"]
+        build_log = run([python, "-m", "pip", "wheel", "--no-deps", "--no-build-isolation", "--no-index",
+                         "--verbose", "--wheel-dir", wheels, *settings, project], cwd=workspace, environment=environment, timeout=600)
+        candidates = list(wheels.glob("python_rtmidi-1.5.8-*.whl"))
+        if len(candidates) != 1:
+            raise ReleaseError("native MIDI build did not produce exactly one wheel")
+        wheel = candidates[0]
+        run([python, "-m", "pip", "install", "--no-index", "--no-deps", wheel], cwd=workspace, environment=environment)
+        probe = "import json,rtmidi; methods=('get_ports','is_port_open','ignore_types','set_callback','open_port','cancel_callback','close_port'); assert all(hasattr(rtmidi.MidiIn,m) for m in methods); "
+        if os.name == "nt":
+            probe += "assert rtmidi.API_WINDOWS_MM in rtmidi.get_compiled_api(); "
+        elif sys.platform.startswith("linux"):
+            probe += "assert rtmidi.API_LINUX_ALSA in rtmidi.get_compiled_api(); "
+        probe += "print(json.dumps({'version':rtmidi.__version__,'compiled_apis':rtmidi.get_compiled_api(),'required_midi_input_methods':list(methods)}))"
+        api = json.loads(run([python, "-I", "-c", probe], cwd=workspace, environment=environment))
+        installed = json.loads(run([python, "-m", "pip", "list", "--format=json"], cwd=workspace, environment=environment))
+        shutil.copy2(wheel, destination / wheel.name)
+        (destination / "RTMIDI-BUILD.log").write_text(build_log, encoding="utf-8", newline="\n")
+        return {"mode": "built from pinned published sdist", "version": RTMIDI_VERSION,
+                "source_url": RTMIDI_SOURCE_URL, "source_sha256": RTMIDI_SOURCE_SHA256,
+                "python": platform.python_version(), "platform": platform.system(),
+                "generated_cpp_before_sha256": before["src/_rtmidi.cpp"],
+                "generated_cpp_after_sha256": after["src/_rtmidi.cpp"],
+                "changed_source_files": changed, "build_settings": settings,
+                "build_distributions": installed, "device_free_api_probe": api,
+                "wheel": wheel.name, "wheel_sha256": digest(wheel),
+                "build_log_sha256": digest(destination / "RTMIDI-BUILD.log"),
+                "reproducibility": "source and build inputs recorded; no byte-for-byte reproducibility claim for this third-party native wheel",
+                "physical_acceptance": "not performed; no MIDI device was opened"}
+
+
 def prepare_wheelhouse(destination: Path, source: Path = ROOT, *, extras: Sequence[str] = ()) -> None:
+    destination = destination.resolve()
     destination.mkdir(parents=True, exist_ok=True)
     # Acquisition is the sole network-enabled phase. Tests/build/install never download.
     environment = os.environ.copy()
@@ -107,8 +262,28 @@ def prepare_wheelhouse(destination: Path, source: Path = ROOT, *, extras: Sequen
     optional = tomllib.loads((source / "kit" / "pyproject.toml").read_text(encoding="utf-8"))["project"]["optional-dependencies"]
     if any(extra not in optional for extra in extras):
         raise ReleaseError("extras must contain only audio and/or midi")
-    extra_requirements = [requirement for extra in extras for requirement in optional[extra]]
-    run([sys.executable, "-m", "pip", "download", "--only-binary=:all:", "--dest", destination.resolve(), "-r", source / "requirements-release.txt", *extra_requirements], cwd=source, environment=environment)
+    extra_requirements = [requirement for extra in extras for requirement in optional[extra] if not requirement.startswith("python-rtmidi")]
+    run([sys.executable, "-m", "pip", "download", "--only-binary=:all:", "--dest", destination,
+         "-r", source / "requirements-release.txt", "--constraint", source / "requirements-optional.txt", *extra_requirements], cwd=source, environment=environment)
+    if "midi" in extras:
+        metadata_url = "https://pypi.org/pypi/python-rtmidi/1.5.8/json"
+        with urllib.request.urlopen(metadata_url, timeout=45) as response:
+            metadata = json.load(response)
+        compatible = compatible_rtmidi_wheels(metadata)
+        if compatible:
+            run([sys.executable, "-m", "pip", "download", "--only-binary=:all:", "--no-deps", "--dest", destination,
+                 "--constraint", source / "requirements-optional.txt", "python-rtmidi==1.5.8"], cwd=source, environment=environment)
+            advertised = {artifact["filename"]: artifact["digests"]["sha256"] for artifact in metadata["urls"] if artifact["filename"] in compatible}
+            obtained = {path.name: digest(path) for path in destination.glob("python_rtmidi-1.5.8-*.whl") if path.name in compatible}
+            if not obtained or any(advertised[name] != sha for name, sha in obtained.items()):
+                raise ReleaseError("downloaded python-rtmidi wheel differs from pinned PyPI metadata")
+            provenance = {"mode": "upstream binary wheel", "version": RTMIDI_VERSION, "metadata_url": metadata_url,
+                          "downloaded_wheels_sha256": obtained, "compatible_upstream_wheels": compatible, "python": platform.python_version(), "platform": platform.system()}
+        else:
+            print("==> No compatible upstream python-rtmidi 1.5.8 wheel; building the pinned source distribution explicitly", flush=True)
+            provenance = build_rtmidi_wheel(destination, source, environment)
+        validate_rtmidi_provenance(destination, provenance=provenance)
+        (destination / "RTMIDI-PROVENANCE.json").write_bytes(json_bytes(provenance))
     manifest = {path.name: digest(path) for path in sorted(destination.glob("*.whl"))}
     (destination / "WHEELHOUSE.json").write_bytes(json_bytes(manifest))
     print(f"Prepared {len(manifest)} dependency wheels in {destination}")
@@ -404,6 +579,7 @@ def create_candidate(repository: Path, revision: str, output: Path, *, wheelhous
     repository, output = repository.resolve(), output.resolve()
     wheelhouse = require_wheelhouse(wheelhouse)
     validate_output_location(repository, output)
+    validate_rtmidi_provenance(wheelhouse)
     dirty = run(["git", "status", "--porcelain", "--untracked-files=normal"], cwd=repository).strip()
     if dirty:
         raise ReleaseError("release requires a clean checkout; commit changes before qualification")
@@ -430,7 +606,8 @@ def create_candidate(repository: Path, revision: str, output: Path, *, wheelhous
         inventory = verify_wheels(source_a, first)
         qualification = qualify_install(source_a, first, wheelhouse=wheelhouse)
         qualification.update({"source_commit": info["commit"], "source_tree": info["tree"], "reproducible_wheels": first_hashes, "physical_acceptance": "not performed; see docs/ACCEPTANCE.md"})
-        source_record = {"schema_version": 1, "project": "TRIO", "version": VERSION, "status": "unpublished release candidate; Draft/HOLD", **info, "source_files_sha256": hashes, "source_file_modes": {name: format(mode, "04o") for name, mode in modes.items()}, "wheels": inventory, "build_requirements": (source_a / "requirements-release.txt").read_text(encoding="utf-8"), "toolchain": {"python": platform.python_version(), "platform": platform.system()}, "dependency_wheels_sha256": {path.name: digest(path) for path in sorted(wheelhouse.glob("*.whl"))}, "physical_acceptance": "not performed; see docs/ACCEPTANCE.md"}
+        midi_provenance = validate_rtmidi_provenance(wheelhouse)
+        source_record = {"schema_version": 1, "project": "TRIO", "version": VERSION, "status": "unpublished release candidate; Draft/HOLD", **info, "source_files_sha256": hashes, "source_file_modes": {name: format(mode, "04o") for name, mode in modes.items()}, "wheels": inventory, "build_requirements": (source_a / "requirements-release.txt").read_text(encoding="utf-8"), "toolchain": {"python": platform.python_version(), "platform": platform.system()}, "dependency_wheels_sha256": {path.name: digest(path) for path in sorted(wheelhouse.glob("*.whl"))}, "optional_requirements": (source_a / "requirements-optional.txt").read_text(encoding="utf-8"), "optional_midi_provenance": midi_provenance, "physical_acceptance": "not performed; see docs/ACCEPTANCE.md"}
         (stage / "SOURCE.json").write_bytes(json_bytes(source_record))
         (stage / "QUALIFICATION.json").write_bytes(json_bytes(qualification))
         short = str(info["commit"])[:12]

@@ -10,14 +10,14 @@ TRIO-017 adds a reusable first-run launcher for POSIX and Windows, explicit hard
 
 ## Qualification and interpretation
 
-The required matrix is Ubuntu/Python 3.11, Ubuntu/Python 3.14, Windows/Python 3.11 and Windows/Python 3.14. A candidate is software-qualified only when its exact-source CI and independent review evidence are green. Use the PR's final handoff and artifact `SOURCE.json`/qualification records for the actual revision and outcomes; a successful run for a different revision does not qualify this one.
+The required matrix is Ubuntu/Python 3.11, Ubuntu/Python 3.14, Windows/Python 3.11 and Windows/Python 3.14. The Python 3.14 MIDI installation path first builds a checksum-qualified upstream dependency wheel with pinned Cython/Meson and the host native toolchain, then tests offline installation. A candidate is software-qualified only when its exact-source CI and independent review evidence are green. Use the PR's final handoff and artifact `SOURCE.json`/qualification records for the actual revision and outcomes; a successful run for a different revision does not qualify this one.
 
 The release tool checks clean builds, package contents, installed versions/imports/commands, every installed selftest and checksums. Reproducibility means repeated builds from the same Git source with the recorded pinned toolchain and source epoch produce the same TRIO wheel/source bytes. Third-party native dependencies and installer qualification evidence depend on the recorded platform/interpreter; cross-platform equality of those binaries is not claimed.
 
 ## Known scope and limits
 
 - Python is required; there is no bundled standalone executable, plugin/VST/CLAP, audio input, sample import or network synthesis feature.
-- Core install is device-free. Audio/MIDI packages are explicit extras; host drivers and devices are separately required. Device fallback preserves UI/offline operation.
+- Core install is device-free. Audio/MIDI packages are explicit extras; host drivers and devices are separately required. Device fallback preserves UI/offline operation. For convenient online Windows MIDI setup, use 64-bit Python 3.11. Python 3.14 MIDI requires the [controlled native wheelhouse preparation](INSTALL.md#python-314-midi-wheelhouse) before offline setup; plain upstream source installation is not the qualified path.
 - Computer keys use timed gates because ordinary terminal input lacks key-up events. Use an actual MIDI controller for held-key performance; physical behavior must be checked.
 - The TUI sequence editor exposes enable/velocity/probability, tempo/swing and arp controls. Advanced pattern note/gate/length/lane settings are validated preset data. LFO/ModEnv source configuration is likewise preset data; the matrix edits routes/amounts and the rack edits order/mix/bypass.
 - Parameter undo/redo is not a full-history editor. Save presets explicitly; last-session restore and recording of interactive sessions are not features of 0.1.0.
