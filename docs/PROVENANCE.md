@@ -25,6 +25,15 @@ included in the final qualification path. All final-source outcomes remain
 identified by exact SHA/run/artifact in the PR handoff; this first run is retained
 as debugging provenance, not presented as a four-lane pass.
 
+The next run,
+[43547384618](https://github.com/techrote/tuisynth-codex/actions/runs/43547384618),
+proved the controlled native MIDI build on both Python 3.14 platforms, and both
+Windows lanes completed every software gate. Its Linux
+backend-import gate exposed that the hosted PortAudio build requires a reachable
+PulseAudio server during initialization. CI now starts a private virtual host
+with a null sink for this software gate. It opens no TRIO audio stream and does
+not establish physical output, listening or sustained hardware performance.
+
 | Issue | Role | Tool/provider | Exact model/config | Contribution | Human intervention | Date |
 |---|---|---|---|---|---|---|
 | TRIO-017 | prepass, implementation, integration, debug, qualification, release-audit | ChatGPT/Codex primary agent; GitHub connector, Git, Python 3.12.14, pip, build, setuptools, wheel, pytest, GitHub Actions | GPT-6 Astra Pro; exact reasoning configuration not exposed | Revalidated live issue/main and the 551-test baseline; integrated offline packaging with the existing check entry point, preserved/expanded all four CI lanes, added exact-source artifact upload without publication, pinned transitive dependencies and reconciled programme/RAG/provenance. Repaired MIDI-learn cancellation, modal keyboard/pointer ownership, visible overlay selection/scrolling, and selected-parameter CC learning for ordinary controls, LOOM groups and DRIFT drawers. Added real-key/SGR regressions and repaired independent-review findings through final-source qualification. Exact source/run/artifact results are recorded in the PR handoff and generated qualification records. | Owner supplied the full TRIO-017 finishing mission and explicit Draft/HOLD override; no implementation code or physical acceptance evidence supplied | 2026-11-14 |

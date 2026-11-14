@@ -65,6 +65,9 @@ Every Ubuntu/Windows × Python 3.11/3.14 lane performs these gates:
    installation and subsequent reuse. The candidate ZIP's actual wrapper bytes are
    exercised, including Windows line-ending handling. Load the optional modules
    and verify the compiled MIDI host API without opening streams or ports.
+   Linux CI supplies a private PulseAudio host with a null sink for PortAudio
+   initialization; this is a virtual software dependency check, not an audio
+   output or listening result.
 7. Verify final SHA-256 manifests and upload review artifacts/evidence.
    Python 3.14 additionally uploads its complete matching dependency wheelhouse
    so owner installation can use the qualified native MIDI wheel without a

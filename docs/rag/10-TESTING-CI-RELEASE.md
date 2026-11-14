@@ -32,6 +32,9 @@ acquisition is an explicit network-enabled setup step:
 Builds, package checks and launcher qualification then use that wheelhouse offline.
 The optional backends are installed for software checks without opening devices;
 their physical behavior still requires `docs/ACCEPTANCE.md`.
+Linux CI uses a private virtual PulseAudio host for the native audio library's
+initialization. The probe opens no TRIO audio stream; virtual host availability
+does not satisfy physical audio acceptance.
 `requirements-optional.txt` constrains the optional dependency versions without
 adding them to core installs. If the pinned MIDI backend has no matching binary,
 acquisition verifies the published source hash and uses the pinned

@@ -61,13 +61,34 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends build-essential pkg-config libasound2-dev libportaudio2
+          sudo apt-get install --yes --no-install-recommends build-essential pkg-config libasound2-dev libportaudio2 pulseaudio pulseaudio-utils
       - name: Acquire wheels for offline qualification
         run: python tools/release.py --prepare-wheelhouse .trio-ci/wheelhouse --extras audio,midi
       - name: Run package checks
         run: python tools/check.py --package all
       - name: Build reproducible source candidate and qualify installed commands
         run: python tools/release.py --revision HEAD --wheelhouse .trio-ci/wheelhouse --output .trio-ci/release
+      - name: Start private software audio host
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          trio_pulse_runtime="$RUNNER_TEMP/trio-pulse-runtime"
+          install -d -m 700 "$trio_pulse_runtime"
+          export XDG_RUNTIME_DIR="$trio_pulse_runtime"
+          timeout 20s pulseaudio -n --daemonize=yes --exit-idle-time=-1 --fail=yes \
+            --load="module-native-protocol-unix socket=$trio_pulse_runtime/native" \
+            --load="module-null-sink sink_name=trio_ci rate=48000 channels=2" \
+            --log-target="file:$RUNNER_TEMP/trio-pulseaudio.log"
+          export PULSE_SERVER="unix:$trio_pulse_runtime/native"
+          timeout 10s pactl set-default-sink trio_ci
+          timeout 10s pactl set-default-source trio_ci.monitor
+          timeout 10s pactl info
+          timeout 10s pactl list short sinks
+          {
+            printf 'XDG_RUNTIME_DIR=%s\n' "$XDG_RUNTIME_DIR"
+            printf 'PULSE_SERVER=%s\n' "$PULSE_SERVER"
+          } >> "$GITHUB_ENV"
       - name: Qualify real first-run and repeated launchers with source and wheels
         run: python tools/check_launchers.py --wheelhouse .trio-ci/wheelhouse --wheels .trio-ci/release --extras audio,midi --report .trio-ci/launcher-qualification.json
       - name: Verify final candidate checksums
@@ -95,3 +116,20 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
+      - name: Retain virtual audio diagnostic on failure
+        if: failure() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: trio-audio-diagnostic-py${{ matrix.python-version }}-${{ steps.source.outputs.sha }}
+          path: ${{ runner.temp }}/trio-pulseaudio.log
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Stop private software audio host
+        if: always() && runner.os == 'Linux'
+        shell: bash
+        run: |
+          trio_pulse_socket="$RUNNER_TEMP/trio-pulse-runtime/native"
+          if [ -S "$trio_pulse_socket" ]; then
+            timeout 10s pactl --server="unix:$trio_pulse_socket" exit ||
+              printf '%s\n' 'Private audio host was already stopped or unavailable.'
+          fi
