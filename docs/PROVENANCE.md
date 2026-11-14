@@ -1,7 +1,47 @@
 # Provenance ledger
 
+TRIO-017 resumes this independent Codex attempt on 14 November 2026. The owner's
+campaign requires Draft/HOLD: no merge, tag, public release or closure of #17.
+The previously pending TRIO-016 repair/main verification is now reconciled: main
+`357215781ba0b82694e62dd4d7ba1c3697ac3159` passed all four lanes in
+[run 39115306829](https://github.com/techrote/tuisynth-codex/actions/runs/39115306829).
+The historical entries below retain what was known when they were written.
+
+The first TRIO-017 candidate CI run,
+[43545617750](https://github.com/techrote/tuisynth-codex/actions/runs/43545617750),
+passed the complete Ubuntu/Python 3.11 lane and exposed two cross-platform gaps:
+an oversized pytest parameter ID exceeded Windows' environment-variable limit,
+and upstream python-rtmidi 1.5.8 had no Python 3.14 binary wheel. The primary agent
+repaired the test identifier without reducing its corruption payload and added
+native CI prerequisites and separate Python 3.14 wheelhouse artifacts. The
+packaging agent implemented checksum-verified published-source acquisition,
+pinned Cython regeneration of the generated C++ only, a pinned Meson build,
+compiled-host-API checks and native provenance. The launcher agent repaired
+optional build isolation, explicit prepared-wheelhouse requirements and installed
+backend inspection; the documentation agent reconciled the owner procedures.
+Independent follow-up review identified missing retained compiler evidence and
+the need to constrain optional versions when reusing a wheelhouse. Both are
+included in the final qualification path. All final-source outcomes remain
+identified by exact SHA/run/artifact in the PR handoff; this first run is retained
+as debugging provenance, not presented as a four-lane pass.
+
+The next run,
+[43547384618](https://github.com/techrote/tuisynth-codex/actions/runs/43547384618),
+proved the controlled native MIDI build on both Python 3.14 platforms, and both
+Windows lanes completed every software gate. Its Linux
+backend-import gate exposed that the hosted PortAudio build requires a reachable
+PulseAudio server during initialization. CI now starts a private virtual host
+with a null sink for this software gate. It opens no TRIO audio stream and does
+not establish physical output, listening or sustained hardware performance.
+
 | Issue | Role | Tool/provider | Exact model/config | Contribution | Human intervention | Date |
 |---|---|---|---|---|---|---|
+| TRIO-017 / PR #35 | owner-supplied independent follow-up review, targeted remediation and CI qualification | Independent review text; ChatGPT GitHub connector and GitHub Actions | Remediation: GPT-6; independent review model/configuration not specified in supplied report | The review identified a P3 synthetic-release bug in captured Button widgets; follow-up inspected ListBox and found the same activation-on-release weakness in the AURORA library. Introduced an explicit widget cancellation hook, prevented cancelled Button/ListBox activations and unpaired list mouse-up callbacks, and added real terminal-input regressions for visible, hidden and replaced controls. Previous sustained-gesture cancellation remains covered. The new exact-head CI result is recorded in PR #35. | Owner supplied the independent review and required the existing Draft/HOLD and human hardware gates to remain in place | 2026-11-14 |
+| TRIO-017 | prepass, implementation, integration, debug, qualification, release-audit | ChatGPT/Codex primary agent; GitHub connector, Git, Python 3.12.14, pip, build, setuptools, wheel, pytest, GitHub Actions | GPT-6 Astra Pro; exact reasoning configuration not exposed | Revalidated live issue/main and the 551-test baseline; integrated offline packaging with the existing check entry point, preserved/expanded all four CI lanes, added exact-source artifact upload without publication, pinned transitive dependencies and reconciled programme/RAG/provenance. Repaired MIDI-learn cancellation, modal keyboard/pointer ownership, visible overlay selection/scrolling, and selected-parameter CC learning for ordinary controls, LOOM groups and DRIFT drawers. Added real-key/SGR regressions and repaired independent-review findings through final-source qualification. Exact source/run/artifact results are recorded in the PR handoff and generated qualification records. | Owner supplied the full TRIO-017 finishing mission and explicit Draft/HOLD override; no implementation code or physical acceptance evidence supplied | 2026-11-14 |
+| TRIO-017 | subagent, implementation, qualification, focused review | Provider-native packaging agent; Python, Git, pip, build, setuptools, wheel, pytest | GPT-6 Astra Pro, inherited primary configuration; exact effort not exposed | Built the pinned release requirements, exact-Git export, two-build wheel/source/candidate reproducibility, complete payload/metadata/RECORD verification, clean installed selftests and renders, SHA-256 manifests, SOURCE/QUALIFICATION/REPRODUCIBILITY records and corruption/source-safety regressions. Preliminary real Linux clean installation passed all four commands; committed-source qualification supersedes mutable-worktree experiments. | No additional human guidance | 2026-11-14 |
+| TRIO-017 | subagent, implementation, debug, qualification | Provider-native launcher agent; Python, POSIX shell, Windows cmd via hosted CI, pip, pytest | GPT-6 Astra Pro, inherited primary configuration; exact effort not exposed | Added first-run/reusable source and wheel launchers, optional backend selection, owned-venv/error/recovery behavior, argument forwarding, default Python selection, real fixture installer regressions, actual source/wheel selftests, and exact candidate ZIP extraction/integrity checks. Reports record input/wheel hashes and installed dependencies; physical devices are not exercised. | No additional human guidance | 2026-11-14 |
+| TRIO-017 | subagent, implementation, documentation, debug, qualification | Provider-native documentation agent; Python, pytest, source/asset inspection | GPT-6 Astra Pro, inherited primary configuration; exact effort not exposed | Wrote root/instrument/install/control/CLI/release/acceptance guides and 17-issue changelog; generated and tested dispatch/parser/asset/snapshot references. Reproduced and repaired the shared MIDI-map/preset-file collision with preserved legacy-preset migration, reserved writes/deletes and actual save/list/load/reopen regressions. Corrected DRIFT factory omission versus explicit user-save behavior and PowerShell argument quoting. | No additional human guidance; all physical acceptance cells remain not run | 2026-11-14 |
+| TRIO-017 | independent review, release-audit | Separate provider-native review agent; source inspection, Git, Python, pytest | Configured through the review tool as gpt-6.1-terra / xhigh; serving identifier not independently exposed | Audited the assembled diff against issue/RAG/independence/difference contracts. Reproduced inherited pip-option contamination, modal captured-pointer leakage including hidden piano transitions, wrong composite-control MIDI-learn targets, untested default Windows interpreter selection and documentation overclaims. Findings were passed to the implementers for repair and targeted regression coverage; the final reviewed commit and disposition are in the PR handoff. No sibling implementation material was accessed. | No additional human guidance | 2026-11-14 |
 | TRIO-001 | implementation | Codex desktop | GPT-6, configuration unknown | Workspace/package foundation, CI, check tool, package and workflow qualification tests | User requested end-to-end project completion; no implementation guidance supplied | 2026-10-17 |
 | TRIO-002 | prepass, implementation, review | Codex desktop; GitHub CLI, PowerShell and Python 3.12.10 | GPT-6, configuration unknown | Issue/dependency reconciliation, parameter registry/morphing, schema-versioned preset parsing and library, per-instrument user data, hostile-input tests, clarified curve/format/write contracts; fresh self-review because a different review tier was unavailable | User requested autonomous completion and continuation after a computer crash; no implementation guidance supplied | 2026-10-18 |
 | TRIO-003 | prepass, implementation, debug, review | Codex desktop; GitHub CLI, Git, PowerShell and Python 3.12.10 | GPT-6, configuration unknown | Issue/dependency reconciliation, immutable events and parameter snapshots, release-safe bounded queue, note-id voice management, block engine, linked master limiter and optional sounddevice/null backends; 168 device-free kit tests; event overflow, bounded fade-tail capacity and audio callback contract clarifications; fresh self-review because a different review tier was unavailable | User requested autonomous project completion and continuation after a computer crash; no implementation guidance supplied | 2026-10-18 |

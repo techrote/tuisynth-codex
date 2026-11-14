@@ -35,3 +35,15 @@ Safe subagent parallelism after dependencies: 002/004/006 after 001; three engin
 Per issue done: dependencies merged/green; full behavior + tests; prior tests green; RAG changes documented; provenance recorded; exact reviewed PR head required checks green; merged; main push CI green; no inferred physical claims.
 
 Programme done: all 17 merged/closed, four-lane software qualification and installed-wheel selftests green, release/checksums produced, no known blocking software defects, manual acceptance explicitly separate.
+
+## TRIO-017 owner campaign, 14 November 2026
+
+TRIO-001 through TRIO-016 are merged. The TRIO-016 repair at
+`357215781ba0b82694e62dd4d7ba1c3697ac3159` passed all four main CI lanes in run
+[`39115306829`](https://github.com/techrote/tuisynth-codex/actions/runs/39115306829).
+TRIO-017 is the v0.1.0 release-candidate qualification campaign. Its owner override
+requires one Draft PR on HOLD with review artifacts and exact-source CI evidence;
+merge, tag, public release and closure of #17 require explicit owner approval.
+Software readiness does not mark programme merge/closure or physical acceptance
+complete. See the [prepass](prepasses/TRIO-017.md), release guides and provenance
+ledger for the implemented checks and audit trail.

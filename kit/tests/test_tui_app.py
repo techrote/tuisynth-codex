@@ -8,7 +8,7 @@ from trio_kit.params import ParamSpec
 from trio_kit.tui.app import CanvasApp
 from trio_kit.tui.canvas import Canvas, Rect
 from trio_kit.tui.testing import HeadlessApp
-from trio_kit.tui.widgets import Button, Fader, FocusRing
+from trio_kit.tui.widgets import Button, Fader, FocusRing, ListBox
 from trio_kit.skins import load_skin
 
 
@@ -61,6 +61,74 @@ def test_button_drag_outside_does_not_activate_after_captured_release(tmp_path: 
         assert app.app.router.captured_tag is None
         app.click(3, 2)
         assert hits == ["run"]
+
+
+
+@pytest.mark.parametrize("ownership", ("visible", "hidden", "replaced"))
+def test_cancelling_button_capture_never_activates_and_rearms_normally(tmp_path: Path, ownership: str) -> None:
+    """A modal/screen transition is not a completed click, even for a stale hit."""
+    actions: list[str] = []
+    button = Button("action", Rect(2, 2, 8, 1), "Run", lambda: actions.append("run"))
+    ring = FocusRing((button,))
+    with HeadlessApp(size=(20, 7), widgets=ring, error_log=str(tmp_path / "errors.log")) as app:
+        app._send(app._sgr(0, 3, 2), events=1)
+        assert app.app.router.captured_tag == "action"
+        assert button._armed
+        if ownership == "hidden":
+            button.visible = False
+        elif ownership == "replaced":
+            ring.widgets.remove(button)
+        app.app.cancel_mouse_capture()
+        assert app.app.router.captured_tag is None
+        assert not button._armed
+        assert actions == []
+        # The terminal may still send the physical mouse-up after the overlay
+        # takes ownership; it must not complete the cancelled button press.
+        app.release(3, 2)
+        assert actions == []
+        if ownership == "replaced":
+            ring.add(button)
+        button.visible = True
+        app.app.invalidate()
+        app.screen_text()
+        app.click(3, 2)
+        assert actions == ["run"]
+
+
+
+@pytest.mark.parametrize("ownership", ("visible", "hidden"))
+def test_cancelled_listbox_capture_does_not_activate_on_late_mouse_up(tmp_path: Path, ownership: str) -> None:
+    """ListBox selection previews do not authorize an activation after cancel."""
+    changes: list[str] = []
+    activated: list[str] = []
+    listbox = ListBox(
+        "items",
+        Rect(2, 2, 12, 3),
+        ("Alpha", "Beta"),
+        label="Items",
+        on_change=lambda index, name: changes.append(name),
+        on_activate=lambda index, name: activated.append(name),
+    )
+    with HeadlessApp(size=(20, 7), widgets=FocusRing((listbox,)), error_log=str(tmp_path / "errors.log")) as app:
+        # An unrelated release without a press is never a list activation.
+        app.release(3, 4)
+        assert activated == []
+        app._send(app._sgr(0, 3, 4), events=1)
+        assert listbox._armed
+        assert listbox.selected == 1
+        assert changes == ["Beta"]
+        if ownership == "hidden":
+            listbox.visible = False
+        app.app.cancel_mouse_capture()
+        assert not listbox._armed
+        assert app.app.router.captured_tag is None
+        app.release(3, 4)
+        assert activated == []
+        listbox.visible = True
+        app.app.invalidate()
+        app.screen_text()
+        app.click(3, 3)
+        assert activated == ["Alpha"]
 
 
 def test_sgr_drag_capture_wheel_ctrl_and_right_reset_feed_fake_queue(tmp_path: Path) -> None:

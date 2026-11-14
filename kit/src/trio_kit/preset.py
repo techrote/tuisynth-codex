@@ -26,6 +26,7 @@ _MAX_PRESET_BYTES = 256 * 1024
 _MAX_JSON_DEPTH = 16
 _PRESET_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,47}$")
 _SYNTH_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
+_MIDI_MAP_ID = "midi-map"
 ExtraValidator = Callable[[dict[str, Any]], Mapping[str, Any] | None]
 
 
@@ -41,6 +42,23 @@ def validate_preset_id(preset_id: object) -> str:
     if not isinstance(preset_id, str) or not _PRESET_ID_RE.fullmatch(preset_id):
         raise PresetError("preset id must match ^[a-z0-9][a-z0-9-]{0,47}$")
     return preset_id
+
+
+def _legacy_midi_map_preset(data: bytes) -> bool:
+    """Keep a previously valid, colliding preset discoverable for migration.
+
+    MIDI mappings and presets historically share one directory. The MIDI file
+    must not be parsed as a preset, but an older user may have legitimately
+    saved a preset under this formerly unrestricted id. Do not hide that work.
+    Full preset validation remains the caller's responsibility.
+    """
+    if len(data) > _MAX_PRESET_BYTES:
+        return False
+    try:
+        document = json.loads(data)
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        return False
+    return isinstance(document, dict) and document.get("schema") == PRESET_SCHEMA
 
 
 def _validate_json_tree(
@@ -470,6 +488,15 @@ class PresetLibrary:
                 preset_data = entry.read_bytes()
             except OSError as error:
                 raise PresetError(f"could not read preset {entry}: {error}") from error
+            if not factory and entry.name.lower() == f"{_MIDI_MAP_ID}.json":
+                if not _legacy_midi_map_preset(preset_data):
+                    continue
+                warnings.warn(
+                    "legacy preset id 'midi-map' conflicts with MIDI controller data; "
+                    "rename this preset before saving MIDI controller bindings",
+                    PresetWarning,
+                    stacklevel=2,
+                )
             preset = parse_preset(preset_data, self.synth, self.registry, self.extras_validator)
             if not factory and entry.stem != preset.id:
                 raise PresetError(f"user preset filename {entry.name!r} must match its id")
@@ -546,6 +573,8 @@ class PresetLibrary:
         if not isinstance(overwrite, bool):
             raise PresetError("overwrite must be a boolean")
         normalized = parse_preset(preset.to_dict(), self.synth, self.registry, self.extras_validator)
+        if normalized.id == _MIDI_MAP_ID:
+            raise PresetError("preset id 'midi-map' is reserved for MIDI controller bindings; choose another id")
         factory = self._factory_presets()
         target = self.user_dir / f"{normalized.id}.json"
         overrides = self._override_ids() if normalized.id in factory else set()
@@ -575,6 +604,17 @@ class PresetLibrary:
         factory = self._factory_presets()
         overrides = self._override_ids()
         user_path = self.user_dir / f"{preset_id}.json"
+        if preset_id == _MIDI_MAP_ID and user_path.exists():
+            try:
+                data = user_path.read_bytes()
+            except OSError as error:
+                raise PresetError(f"could not inspect reserved MIDI data {user_path}: {error}") from error
+            if not _legacy_midi_map_preset(data):
+                raise PresetError("'midi-map' is MIDI controller data, not a deletable user preset")
+            # A historical preset at this name can still be migrated/removed.
+            # Do not allow a merely spoofed schema to turn arbitrary data into
+            # a deletable preset.
+            parse_preset(data, self.synth, self.registry, self.extras_validator)
         if preset_id in factory and preset_id not in overrides:
             raise PresetError(f"factory preset {preset_id!r} cannot be deleted")
         if not user_path.exists():

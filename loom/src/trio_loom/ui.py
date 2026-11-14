@@ -134,6 +134,10 @@ class LoomPanelGroup(Widget):
     def current(self) -> ParamSpec:
         return self.specs[self.selected]
 
+    @property
+    def focused_parameter_key(self) -> str:
+        return self.current.key
+
     def _adjust(self, steps: int) -> bool:
         spec = self.current
         value = self.shell._known_params[spec.key]

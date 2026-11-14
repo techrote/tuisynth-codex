@@ -162,6 +162,27 @@ class CcLearnMap:
     def _save(self) -> None:
         temporary: str | None = None
         try:
+            # Before TRIO-017, user presets could use the id 'midi-map' and
+            # occupy this path. Leave a recognizable historical preset intact
+            # so PresetLibrary can expose and rename it; never replace saved
+            # sound data merely because the MIDI loader fell back to empty.
+            try:
+                with self.path.open("rb") as existing:
+                    previous = existing.read(256 * 1024 + 1)
+            except FileNotFoundError:
+                previous = b""
+            try:
+                document = json.loads(previous) if len(previous) <= 256 * 1024 else None
+            except (UnicodeDecodeError, ValueError, RecursionError):
+                document = None
+            if isinstance(document, dict) and document.get("schema") == "trio-preset/1":
+                warnings.warn(
+                    f"cannot replace legacy preset {self.path}; rename the 'midi-map' preset "
+                    "before saving MIDI controller bindings; changes remain in memory",
+                    MidiMapWarning,
+                    stacklevel=2,
+                )
+                return
             serialized = json.dumps(
                 {"schema": _SCHEMA, "bindings": self._bindings},
                 ensure_ascii=True,

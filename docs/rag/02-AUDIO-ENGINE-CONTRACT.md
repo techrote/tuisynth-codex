@@ -66,6 +66,10 @@ JSON document, UTF-8, schema `trio-preset/1`:
   replace an existing preset.
 - Factory presets load from package data; user presets from the user data directory and
   shadow factory presets with the same id only when the user explicitly saves over one.
+- User presets and `midi-map.json` share the instrument data directory. Preset discovery
+  excludes MIDI mapping data and new preset writes reserve the id `midi-map`. A valid
+  historical preset at that name remains visible with a warning and can be renamed;
+  MIDI persistence refuses to overwrite it. Preset deletion cannot delete controller data.
 
 ## Events (TRIO-003)
 

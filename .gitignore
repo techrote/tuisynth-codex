@@ -12,6 +12,8 @@ dist/
 .trio-ci/
 renders/
 recordings/
+.trio-venv/
+.trio-venv.lock
 *.wav
 *.flac
 *.mp3

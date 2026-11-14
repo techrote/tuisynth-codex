@@ -27,11 +27,17 @@ class Widget:
         self.bounds = bounds
         self.label = label
         self.focusable = bool(focusable)
+        self.trap_focus = False
         self.visible = True
 
     @property
     def id(self) -> str:
         return self.tag
+
+    @property
+    def focused_parameter_key(self) -> str | None:
+        """Parameter selected for shell-level actions such as MIDI CC learn."""
+        return None
 
     def draw(self, canvas: Canvas, *, focused: bool = False, hovered: bool = False) -> None:
         if not self.visible:
@@ -45,6 +51,14 @@ class Widget:
 
     def handle_mouse(self, event: MouseInput) -> bool:
         return False
+
+    def cancel_mouse_capture(self, release: MouseInput) -> bool:
+        """End an interrupted drag, normally forwarding release to sustained controls.
+
+        Click-action widgets must override this hook so forced cancellation
+        cannot be mistaken for a completed mouse click.
+        """
+        return self.handle_mouse(release)
 
     def activate(self) -> bool:
         return False
@@ -74,6 +88,10 @@ class ParamWidget(Widget):
         self.on_change = on_change
         self.default = spec.validate_value(spec.default if default is None else default)
         self.value = spec.validate_value(spec.default if value is None else value)
+
+    @property
+    def focused_parameter_key(self) -> str:
+        return self.spec.key
 
     @property
     def unit(self) -> float:
@@ -464,6 +482,13 @@ class Button(Widget):
         self.on_press()
         return True
 
+    def cancel_mouse_capture(self, release: MouseInput) -> bool:
+        """Disarm a cancelled press without invoking its click callback."""
+        del release
+        was_armed = self._armed
+        self._armed = False
+        return was_armed
+
     def handle_mouse(self, event: MouseInput) -> bool:
         if event.kind == "right":
             if self.on_right_click is None:
@@ -580,6 +605,7 @@ class ListBox(Widget):
         self.on_change = on_change
         self.on_activate = on_activate
         self.selected = min(len(self.items) - 1, max(0, int(selected)))
+        self._armed = False
 
     def _select(self, index: int) -> bool:
         index = min(len(self.items) - 1, max(0, index))
@@ -612,17 +638,29 @@ class ListBox(Widget):
             return self._select(0)
         return False
 
+    def cancel_mouse_capture(self, release: MouseInput) -> bool:
+        """Discard a pending list activation on cancelled capture."""
+        del release
+        was_armed = self._armed
+        self._armed = False
+        return was_armed
+
     def handle_mouse(self, event: MouseInput) -> bool:
         if event.kind == "right":
             return self._select(0)
         if event.kind in {"wheel_up", "wheel_down"}:
             return self._select(self.selected + (event.steps if event.kind == "wheel_down" else -event.steps))
         if event.kind == "down" and event.button == "left":
+            self._armed = True
             row = event.y - self.bounds.y - (1 if self.label else 0)
             return self._select(row)
-        if event.kind == "up" and event.button == "left" and self.bounds.contains(event.x, event.y) and self.on_activate is not None:
-            self.on_activate(self.selected, self.items[self.selected])
-            return True
+        if event.kind == "up" and event.button == "left":
+            was_armed = self._armed
+            self._armed = False
+            if was_armed and self.bounds.contains(event.x, event.y) and self.on_activate is not None:
+                self.on_activate(self.selected, self.items[self.selected])
+                return True
+            return was_armed
         return False
 
     def draw(self, canvas: Canvas, *, focused: bool = False, hovered: bool = False) -> None:
@@ -762,11 +800,13 @@ class FocusRing:
         return True
 
     def handle_key(self, key: str, data: str = "") -> bool:
+        widget = self.focused
+        if widget is not None and widget.trap_focus:
+            return widget.handle_key(key, data)
         if key == "tab":
             return self.move(1)
         if key == "s-tab":
             return self.move(-1)
-        widget = self.focused
         return widget.handle_key(key, data) if widget is not None else False
 
     def handle_mouse(self, tag: str, event: MouseInput) -> bool:

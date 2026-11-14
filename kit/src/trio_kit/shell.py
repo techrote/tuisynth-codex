@@ -119,6 +119,7 @@ class _OverlayLayer(Widget):
 
     def __init__(self, shell: Shell, bounds: Rect) -> None:
         super().__init__("__overlay__", bounds, label="Overlay", focusable=False)
+        self.trap_focus = True
         self.shell = shell
 
     def draw(self, canvas: Canvas, *, focused: bool = False, hovered: bool = False) -> None:
@@ -132,7 +133,7 @@ class _OverlayLayer(Widget):
         return self.shell.handle_key(key, data) if self.shell.overlay is not None else False
 
     def handle_mouse(self, event: Any) -> bool:
-        return self.shell.overlay is not None
+        return self.shell._handle_overlay_mouse(event) if self.shell.overlay is not None else False
 
 
 class Shell:
@@ -212,6 +213,8 @@ class Shell:
         self.overlay_query = ""
         self.overlay_input = ""
         self.overlay_message: str | None = None
+        self._overlay_scroll = 0
+        self._overlay_rows_rect: Rect | None = None
         self._skin_before_overlay: str | None = None
         self._selected_midi = 0
         self._preset_selection = 0
@@ -562,9 +565,49 @@ class Shell:
         canvas.fill(x, y, width, height, " ", "background")
         canvas.box(x, y, width, height, style="ascii" if canvas.ascii_only else "round", role="accent")
         canvas.text(x + 2, y + 1, title, "title", max_width=width - 4)
-        for index, row in enumerate(rows[: max(0, height - 4)]):
+        visible = max(0, height - 4)
+        selected = next((index for index, row in enumerate(rows) if row.startswith(">")), None)
+        if selected is not None and visible:
+            if selected < self._overlay_scroll:
+                self._overlay_scroll = selected
+            elif selected >= self._overlay_scroll + visible:
+                self._overlay_scroll = selected - visible + 1
+        self._overlay_scroll = max(0, min(self._overlay_scroll, len(rows) - visible))
+        self._overlay_rows_rect = Rect(x + 2, y + 2, max(0, width - 4), visible)
+        for index, row in enumerate(rows[self._overlay_scroll:self._overlay_scroll + visible]):
             role = "selected" if row.startswith(">") or self.overlay in {"learn", "save", "rename"} and index == 1 else "text"
             canvas.text(x + 2, y + 2 + index, row, role, max_width=width - 4)
+
+    def _handle_overlay_mouse(self, event: Any) -> bool:
+        """Activate only visible modal rows; never pass clicks to the instrument."""
+        bounds = self._overlay_rows_rect
+        if bounds is None or not bounds.contains(event.x, event.y):
+            return True
+        if event.kind in {"wheel_up", "wheel_down"}:
+            key = "up" if event.kind == "wheel_up" else "down"
+            for _ in range(event.steps):
+                self._handle_overlay_key(key, "")
+            return True
+        preview = event.kind == "move" and self.overlay == "skins"
+        activate = event.kind == "down" and event.button == "left"
+        if not (preview or activate):
+            return True
+        index = self._overlay_scroll + event.y - bounds.y
+        if self.overlay == "skins" and index < len(self.skins.ids):
+            self._select_skin(self.skins.ids[index])
+            if activate:
+                self.close_overlay(restore_skin=False)
+        elif self.overlay == "midi" and index < len(self.midi_ports):
+            self._selected_midi = index
+            self._handle_overlay_key("enter", "")
+        elif self.overlay == "presets" and index < len(self.presets.list_presets()):
+            self._preset_selection = index
+            self._handle_overlay_key("enter", "")
+        elif self.overlay == "palette" and index < len(self._filtered_commands()):
+            self.overlay_index = index
+            self._handle_overlay_key("enter", "")
+        self.invalidate()
+        return True
 
     def _select_skin(self, skin_id: str) -> None:
         skin = self.skins.select(skin_id)
@@ -601,6 +644,8 @@ class Shell:
         self._select_skin(self.skins.cycle(direction).id)
 
     def _open_screen(self, key: str) -> None:
+        if self.app is not None:
+            self.app.cancel_mouse_capture()
         self.current_screen = key
         if self.spec.on_screen is not None:
             self.spec.on_screen(key, self)
@@ -629,8 +674,12 @@ class Shell:
     def open_overlay(self, name: str) -> None:
         if name not in {"help", "palette", "skins", "midi", "presets", "learn"}:
             raise ValueError(f"unsupported overlay: {name}")
+        if self.app is not None:
+            self.app.cancel_mouse_capture()
         if self.overlay == "skins" and name != "skins" and self._skin_before_overlay is not None:
             self._select_skin(self._skin_before_overlay)
+        if self.overlay == "learn" and name != "learn":
+            self.cc_learn.disarm()
         if self.overlay is None:
             self._focus_before_overlay = self.widgets.focused_tag
         self.overlay = name
@@ -639,6 +688,8 @@ class Shell:
         self.overlay_index = 0
         self.overlay_query = ""
         self.overlay_message = None
+        self._overlay_scroll = 0
+        self._overlay_rows_rect = None
         self._skin_before_overlay = self.skins.current_id if name == "skins" else None
         if name == "midi":
             try:
@@ -651,9 +702,12 @@ class Shell:
         self.invalidate()
 
     def close_overlay(self, *, restore_skin: bool = True) -> None:
+        if self.overlay == "learn":
+            self.cc_learn.disarm()
         if self.overlay == "skins" and restore_skin and self._skin_before_overlay is not None:
             self._select_skin(self._skin_before_overlay)
         self.overlay = None
+        self._overlay_rows_rect = None
         self._skin_before_overlay = None
         self._overlay_layer.focusable = False
         if self._focus_before_overlay is not None:
@@ -665,7 +719,10 @@ class Shell:
 
     def arm_cc_learn(self) -> bool:
         widget = self.widgets.focused
-        control = widget.spec.key if isinstance(widget, ParamWidget) else next(iter(self.registry.specs), None)
+        if self.overlay is not None:
+            widget = next((item for item in self.widgets.widgets if item.tag == self._focus_before_overlay), None)
+        selected = widget.focused_parameter_key if widget is not None else None
+        control = selected if selected in self.registry.specs else next(iter(self.registry.specs), None)
         if control is None:
             self.status_message = "No parameter is available for MIDI learn"
             self.open_overlay("learn")
@@ -678,10 +735,24 @@ class Shell:
 
     def _handle_overlay_key(self, key: str, data: str) -> bool:
         typed = data if len(data) == 1 and data.isprintable() else key if len(key) == 1 and key.isprintable() else ""
+        if key == "f9":
+            self.panic()
+            return True
         if key == "escape":
             self.close_overlay()
             return True
         if self.overlay == "help":
+            if key in {"up", "down", "pageup", "pagedown", "home", "end"}:
+                rows = len(self._overlay_rows())
+                visible = self._overlay_rows_rect.height if self._overlay_rows_rect is not None else 1
+                amount = visible if key in {"pageup", "pagedown"} else 1
+                if key == "home":
+                    self._overlay_scroll = 0
+                elif key == "end":
+                    self._overlay_scroll = max(0, rows - visible)
+                else:
+                    self._overlay_scroll += amount if key in {"down", "pagedown"} else -amount
+                self.invalidate()
             return True
         if self.overlay == "palette":
             commands = self._filtered_commands()
@@ -721,7 +792,7 @@ class Shell:
                 self.midi.select_port(self._selected_midi)
                 self.status_message = self.midi_status
                 self.close_overlay(restore_skin=False)
-            elif typed.casefold() == "l":
+            elif key == "c-l" or typed.casefold() == "l":
                 self.arm_cc_learn()
             self.invalidate()
             return True
@@ -779,9 +850,6 @@ class Shell:
             self.invalidate()
             return True
         if self.overlay == "learn":
-            if key == "escape":
-                self.cc_learn.disarm()
-                self.close_overlay(restore_skin=False)
             return True
         return False
 
@@ -808,6 +876,8 @@ class Shell:
             self.panic()
             return True
         if key in {"s-f3", "shift-f3"} and self.spec.on_screen is not None:
+            if self.app is not None:
+                self.app.cancel_mouse_capture()
             self.piano.visible = True
             if self.current_screen != "s-f3":
                 self._screen_before_sequencer = self.current_screen
@@ -817,6 +887,8 @@ class Shell:
             self.invalidate()
             return True
         if key in {"s-f4", "shift-f4"} and self.spec.on_screen is not None:
+            if self.app is not None:
+                self.app.cancel_mouse_capture()
             self.piano.visible = False
             if self.current_screen != "s-f4":
                 self._screen_before_modulation = self.current_screen
@@ -839,12 +911,16 @@ class Shell:
             return True
         if key == "escape":
             if self.current_screen == "s-f4" and self.spec.on_screen is not None:
+                if self.app is not None:
+                    self.app.cancel_mouse_capture()
                 self.piano.visible = True
                 self.spec.on_screen("mod-return", self)
                 self._screen_before_modulation = None
                 self.invalidate()
                 return True
             if self.current_screen == "s-f3" and self.spec.on_screen is not None:
+                if self.app is not None:
+                    self.app.cancel_mouse_capture()
                 self.spec.on_screen("seq-return", self)
                 self._screen_before_sequencer = None
                 self.invalidate()
@@ -864,6 +940,8 @@ class Shell:
             return True
         if key.startswith("f") and key[1:].isdigit() and key in {"f2", "f3", "f4", "f5"}:
             if self.spec.on_screen is not None:
+                if self.app is not None:
+                    self.app.cancel_mouse_capture()
                 self.piano.visible = True
                 self.current_screen = key.lower()
                 self.spec.on_screen(self.current_screen, self)
@@ -969,6 +1047,7 @@ class Shell:
                 return
             self._closed = True
         self._worker_stop.set()
+        self.cc_learn.disarm()
         failures: list[str] = []
         if self._worker is not None and self._worker is not threading.current_thread():
             try:
