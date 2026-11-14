@@ -10,11 +10,12 @@ Physical acceptance is solely recorded in [ACCEPTANCE.md](ACCEPTANCE.md).
 The 14 November independent review of commit `40584a81a42b86ea4cfd87e2277b16036c373bcb`
 identified one P3 shared-Button capture defect: synthetic in-bounds mouse-up
 could activate a button while a modal or screen transition cancelled its
-gesture. The widget cancellation hook now distinguishes deliberate cancellation
-from a normal click: a Button is disarmed without callback, while sustained
-gesture widgets retain their release. The real SGR regression covers visible,
-hidden and removed-from-focus-ring capture owners, subsequent terminal mouse-up,
-and a fresh valid click. The exact corrected commit/CI is recorded in PR #35.
+gesture. The follow-up audit identified the same release-without-press risk
+in shared ListBox, used by AURORA's library screen. The widget cancellation
+hook now distinguishes deliberate cancellation from a normal click: Buttons
+and ListBoxes disarm without activation, while sustained gesture widgets retain
+their release. Real SGR regressions cover visible, hidden and replaced
+capture owners, late physical mouse-up, and subsequent valid clicks. The exact corrected commit/CI is recorded in PR #35.
 This change does not claim any additional hardware acceptance.
 
 ## Exact source and evidence

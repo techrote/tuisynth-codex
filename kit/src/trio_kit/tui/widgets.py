@@ -605,6 +605,7 @@ class ListBox(Widget):
         self.on_change = on_change
         self.on_activate = on_activate
         self.selected = min(len(self.items) - 1, max(0, int(selected)))
+        self._armed = False
 
     def _select(self, index: int) -> bool:
         index = min(len(self.items) - 1, max(0, index))
@@ -637,17 +638,29 @@ class ListBox(Widget):
             return self._select(0)
         return False
 
+    def cancel_mouse_capture(self, release: MouseInput) -> bool:
+        """Discard a pending list activation on cancelled capture."""
+        del release
+        was_armed = self._armed
+        self._armed = False
+        return was_armed
+
     def handle_mouse(self, event: MouseInput) -> bool:
         if event.kind == "right":
             return self._select(0)
         if event.kind in {"wheel_up", "wheel_down"}:
             return self._select(self.selected + (event.steps if event.kind == "wheel_down" else -event.steps))
         if event.kind == "down" and event.button == "left":
+            self._armed = True
             row = event.y - self.bounds.y - (1 if self.label else 0)
             return self._select(row)
-        if event.kind == "up" and event.button == "left" and self.bounds.contains(event.x, event.y) and self.on_activate is not None:
-            self.on_activate(self.selected, self.items[self.selected])
-            return True
+        if event.kind == "up" and event.button == "left":
+            was_armed = self._armed
+            self._armed = False
+            if was_armed and self.bounds.contains(event.x, event.y) and self.on_activate is not None:
+                self.on_activate(self.selected, self.items[self.selected])
+                return True
+            return was_armed
         return False
 
     def draw(self, canvas: Canvas, *, focused: bool = False, hovered: bool = False) -> None:
