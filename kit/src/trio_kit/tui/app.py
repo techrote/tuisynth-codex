@@ -22,7 +22,7 @@ from prompt_toolkit.styles import Style as PromptStyle
 from trio_kit.skins import Skin, mono_skin
 from trio_kit.tui.canvas import Canvas, HitRegion
 from trio_kit.tui.mouse import MouseInput, MouseRouter
-from trio_kit.tui.widgets import FocusRing
+from trio_kit.tui.widgets import FocusRing, Widget
 from trio_kit.userdata import get_user_data_dir
 
 
@@ -323,6 +323,26 @@ class CanvasApp:
         self.input_count += 1
         if changed or previous_hover != self.router.hovered_tag or mouse.kind in {"up", "down", "right", "wheel_up", "wheel_down"}:
             self.invalidate()
+
+    def cancel_mouse_capture(self) -> None:
+        """End a held gesture before a modal takes input, preserving its release."""
+        captured = self.router.capture
+        if captured is None:
+            return
+        self.router.capture = None
+        self.router.hover = None
+        release = MouseInput(captured.rect.x, captured.rect.y, "up", "left")
+        self.event_log.append(UIEvent("up", captured.tag, release.x, release.y))
+        # The captured object must receive release even if a screen transition has
+        # already hidden/replaced it. Merely clearing capture could leave a note,
+        # bow or weather gust held indefinitely.
+        if isinstance(captured.payload, Widget):
+            captured.payload.handle_mouse(release)
+        else:
+            owner = next((widget for widget in self.widgets.widgets if widget.tag == captured.tag), None)
+            if owner is not None:
+                owner.handle_mouse(release)
+        self.invalidate()
 
     def invalidate(self, *, animated: bool | None = None) -> None:
         """Mark state dirty, coalescing updates at 4 fps idle or 30 fps animated."""

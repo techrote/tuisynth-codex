@@ -165,3 +165,21 @@ updated only with `--update-snapshots`.
 - `InstrumentSpec.help_rows` may append instrument-specific key and mouse instructions to
   the shared F1 help overlay. Neither callback gives widgets direct access to the audio engine;
   widgets still use shell-level parameter and event routes.
+
+### TRIO-017 release audit repairs
+
+Shared MIDI, preset and command-palette overlays activate the visible row on a
+left click. The shared skin overlay previews on mouse movement and commits on a
+left click; Escape restores the original skin. Wheel input navigates the list and
+keyboard-selected rows scroll into view. Long F1 help text scrolls with the wheel,
+Up/Down, PageUp/PageDown, Home and End. Modal overlays trap Tab/Shift+Tab so input
+cannot reach hidden instrument controls; F9 panic and Ctrl+Q remain available.
+Opening a modal or changing instrument screens releases an active captured mouse
+gesture before hiding its owner, including held piano notes, bows and weather gusts.
+
+Closing or replacing a MIDI-learn overlay, or shutting down the shell, disarms
+learning. Ctrl+L from the MIDI picker uses the parameter focused before opening
+the modal. A subsequent controller message cannot create a cancelled binding.
+Widgets expose `focused_parameter_key` for shell-level parameter actions. Ordinary
+parameter widgets, LOOM's compact groups and DRIFT's drawers return their actual
+selected parameter, so CC learn does not fall back to an unrelated registry entry.

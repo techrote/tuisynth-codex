@@ -324,6 +324,10 @@ class ParameterDrawer(Widget):
         self.on_close = on_close
         self.selected = 0
 
+    @property
+    def focused_parameter_key(self) -> str:
+        return self.keys[self.selected]
+
     def _adjust(self, key: str, step: int) -> bool:
         spec = self.shell.registry[key]
         current = self.shell._known_params[key]

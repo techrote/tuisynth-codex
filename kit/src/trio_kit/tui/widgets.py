@@ -27,11 +27,17 @@ class Widget:
         self.bounds = bounds
         self.label = label
         self.focusable = bool(focusable)
+        self.trap_focus = False
         self.visible = True
 
     @property
     def id(self) -> str:
         return self.tag
+
+    @property
+    def focused_parameter_key(self) -> str | None:
+        """Parameter selected for shell-level actions such as MIDI CC learn."""
+        return None
 
     def draw(self, canvas: Canvas, *, focused: bool = False, hovered: bool = False) -> None:
         if not self.visible:
@@ -74,6 +80,10 @@ class ParamWidget(Widget):
         self.on_change = on_change
         self.default = spec.validate_value(spec.default if default is None else default)
         self.value = spec.validate_value(spec.default if value is None else value)
+
+    @property
+    def focused_parameter_key(self) -> str:
+        return self.spec.key
 
     @property
     def unit(self) -> float:
@@ -762,11 +772,13 @@ class FocusRing:
         return True
 
     def handle_key(self, key: str, data: str = "") -> bool:
+        widget = self.focused
+        if widget is not None and widget.trap_focus:
+            return widget.handle_key(key, data)
         if key == "tab":
             return self.move(1)
         if key == "s-tab":
             return self.move(-1)
-        widget = self.focused
         return widget.handle_key(key, data) if widget is not None else False
 
     def handle_mouse(self, tag: str, event: MouseInput) -> bool:
